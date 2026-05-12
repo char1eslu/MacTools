@@ -424,7 +424,12 @@ jobs:
           export GH_TOKEN="$HOMEBREW_GITHUB_API_TOKEN"
 
           SHA256="$(awk '{ print $1; exit }' "$SHA256_PATH")"
+          if [[ -z "$SHA256" ]]; then
+            echo "Unable to read SHA256 from ${SHA256_PATH}." >&2
+            exit 1
+          fi
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${PROJECT_NAME}.dmg"
+          export SHA256 DOWNLOAD_URL
           TAP_DIR="$(mktemp -d)"
           BRANCH="update-mactools-${VERSION}"
 
