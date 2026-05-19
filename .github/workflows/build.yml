@@ -63,6 +63,21 @@ jobs:
             test \
             -quiet
 
+      - name: Build unsigned Debug app
+        if: github.event_name != 'pull_request'
+        run: |
+          xcodebuild \
+            -project "${PROJECT_NAME}.xcodeproj" \
+            -scheme "${SCHEME}" \
+            -configuration Debug \
+            -destination "platform=macOS" \
+            -derivedDataPath "${DERIVED_DATA}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build \
+            -quiet
+
       - name: Build unsigned Release app
         if: github.event_name != 'pull_request'
         run: |
@@ -77,3 +92,91 @@ jobs:
             CODE_SIGN_IDENTITY= \
             build \
             -quiet
+
+      - name: Build ActivityBar debug plugin package
+        if: github.event_name != 'pull_request'
+        run: |
+          scripts/plugins/build-local-plugins.sh \
+            --source-dir Plugins \
+            --output-dir build/LocalPlugins \
+            --configuration Debug \
+            --destination "platform=macOS" \
+            --plugin activity-bar \
+            --unsigned-build
+
+          codesign --force --deep --sign - \
+            build/LocalPlugins/Packages/activity-bar.mactoolsplugin/ActivityBar.bundle
+
+          scripts/plugins/generate-plugin-catalog.sh \
+            --mode debug \
+            --output build/LocalPlugins/catalog.dev.json \
+            --package build/LocalPlugins/Packages/activity-bar.mactoolsplugin
+
+      - name: Prepare debug downloads
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+
+          ARTIFACTS_DIR="build/artifacts"
+          DEBUG_DOWNLOAD_DIR="build/debug-download"
+          DEBUG_APP="${DERIVED_DATA}/Build/Products/Debug/MacTools Dev.app"
+          RELEASE_APP="${DERIVED_DATA}/Build/Products/Release/MacTools.app"
+
+          rm -rf "${ARTIFACTS_DIR}" "${DEBUG_DOWNLOAD_DIR}"
+          mkdir -p "${ARTIFACTS_DIR}" "${DEBUG_DOWNLOAD_DIR}/LocalPlugins"
+
+          ditto "${DEBUG_APP}" "${DEBUG_DOWNLOAD_DIR}/MacTools Dev.app"
+          ditto "build/LocalPlugins/Packages" "${DEBUG_DOWNLOAD_DIR}/LocalPlugins/Packages"
+          cp scripts/plugins/generate-plugin-catalog.sh "${DEBUG_DOWNLOAD_DIR}/generate-plugin-catalog.sh"
+          chmod +x "${DEBUG_DOWNLOAD_DIR}/generate-plugin-catalog.sh"
+
+          cat > "${DEBUG_DOWNLOAD_DIR}/run-debug.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          ROOT="$(cd "$(dirname "$0")" && pwd)"
+          CATALOG_PATH="${ROOT}/LocalPlugins/catalog.dev.json"
+          PACKAGE_PATH="${ROOT}/LocalPlugins/Packages/activity-bar.mactoolsplugin"
+          APP_PATH="${ROOT}/MacTools Dev.app"
+          APP_EXECUTABLE="${APP_PATH}/Contents/MacOS/MacTools Dev"
+
+          "${ROOT}/generate-plugin-catalog.sh" \
+            --mode debug \
+            --output "${CATALOG_PATH}" \
+            --package "${PACKAGE_PATH}"
+
+          xattr -dr com.apple.quarantine "${APP_PATH}" "${ROOT}/LocalPlugins" 2>/dev/null || true
+
+          echo "Using plugin catalog: file://${CATALOG_PATH}"
+          MACTOOLS_PLUGIN_CATALOG_URL="file://${CATALOG_PATH}" "${APP_EXECUTABLE}"
+          SH
+          chmod +x "${DEBUG_DOWNLOAD_DIR}/run-debug.sh"
+
+          cat > "${DEBUG_DOWNLOAD_DIR}/README-debug.txt" <<'TXT'
+          ActivityBar 调试包
+
+          1. 解压 MacTools-ActivityBar-debug.zip。
+          2. 在终端进入解压目录，运行 ./run-debug.sh。
+          3. 脚本会按当前路径重新生成 LocalPlugins/catalog.dev.json，并用 file:// catalog 启动 MacTools Dev。
+
+          注意：直接双击 MacTools Dev.app 不会带上 MACTOOLS_PLUGIN_CATALOG_URL。
+          TXT
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${DEBUG_DOWNLOAD_DIR}" \
+            "${ARTIFACTS_DIR}/MacTools-ActivityBar-debug.zip"
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "${RELEASE_APP}" \
+            "${ARTIFACTS_DIR}/MacTools-Release-unsigned.zip"
+
+          ls -lah "${ARTIFACTS_DIR}"
+
+      - name: Upload debug artifacts
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacTools-debug-${{ github.sha }}
+          path: build/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
