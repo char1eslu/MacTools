@@ -73,6 +73,7 @@ struct ActivityBarComponentView: View {
     private static let claudeColor = Color(red: 0xCB / 255.0, green: 0x64 / 255.0, blue: 0x41 / 255.0)
     private static let cursorColor = Color.black
     private static let codexColor = Color(red: 0x10 / 255.0, green: 0xA3 / 255.0, blue: 0x7F / 255.0)
+    private static let visibleCodingTools: [ActivityBarCodingTool] = [.claudeCode, .codex]
 
     @ObservedObject var controller: ActivityBarController
     let dismiss: () -> Void
@@ -120,8 +121,8 @@ struct ActivityBarComponentView: View {
     }
 
     private var hasCodingToolsData: Bool {
-        controller.codingStats.days.values.contains {
-            $0.durationSeconds > 0 || $0.wordCount > 0 || $0.toolCallCount > 0
+        controller.codingStats.days.values.contains { day in
+            hasCodingStats(visibleCodingAggregateStats(in: day))
         }
     }
 
@@ -327,7 +328,7 @@ struct ActivityBarComponentView: View {
                 codingToolRow(
                     row: CodingToolDisplayRow(
                         id: "active-ai",
-                        name: "Claude / Cursor / Codex",
+                        name: "Claude / Codex",
                         duration: 0,
                         detail: "\(controller.codingStats.activeSessionCount) active",
                         tint: Self.codexColor,
@@ -388,7 +389,7 @@ struct ActivityBarComponentView: View {
     private var aiWeeklyComparison: some View {
         let avg = aiDailyAvgLastWeek
         if avg > 0 {
-            let today = controller.codingStats.today.durationSeconds
+            let today = visibleCodingAggregateStats(in: controller.codingStats.today).durationSeconds
             let ratio = today / avg
             let aboveAvg = ratio >= 1
             let pct = Int(((ratio - 1) * 100).rounded())
@@ -417,13 +418,15 @@ struct ActivityBarComponentView: View {
         let today = dateKey(for: Date())
         let days = controller.codingStats
             .recentDays(count: 8)
-            .filter { $0.date != today && $0.durationSeconds > 0 }
+            .filter { $0.date != today && visibleCodingAggregateStats(in: $0).durationSeconds > 0 }
 
         guard !days.isEmpty else {
             return 0
         }
 
-        return days.map(\.durationSeconds).reduce(0, +) / Double(days.count)
+        return days
+            .map { visibleCodingAggregateStats(in: $0).durationSeconds }
+            .reduce(0, +) / Double(days.count)
     }
 
     private var topAppsSection: some View {
@@ -569,97 +572,110 @@ struct ActivityBarComponentView: View {
         let days = controller.codingStats.recentDays(count: chartRange.dayCount, endingAt: selectedDate)
         let compactMode = chartRange.dayCount > 7
         let dateLabels = days.map { chartLabel($0.date) }
+        let hasData = days.contains { hasCodingStats(visibleCodingAggregateStats(in: $0)) }
+        let maxMinutes = days
+            .map { day in
+                Swift.max(
+                    toolStats(.claudeCode, in: day).durationSeconds / 60,
+                    toolStats(.codex, in: day).durationSeconds / 60
+                )
+            }
+            .max() ?? 0
+        let yUpperBound = Swift.max(maxMinutes * 1.15, 1)
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 rangePickerBar
                 Spacer(minLength: 8)
                 legendDot(color: Self.claudeColor, label: "Claude")
-                legendDot(color: .purple, label: "Cursor")
                 legendDot(color: Self.codexColor, label: "Codex")
             }
             .padding(.horizontal, 6)
 
-            Chart {
-                ForEach(days) { day in
-                    let d = chartLabel(day.date)
-                    let isHovered = hoveredDate == d
-                    let claudeMins = toolStats(.claudeCode, in: day).durationSeconds / 60
-                    let cursorMins = toolStats(.cursor, in: day).durationSeconds / 60
-                    let codexMins = toolStats(.codex, in: day).durationSeconds / 60
+            ZStack {
+                Chart {
+                    if hasData {
+                        ForEach(days) { day in
+                            let d = chartLabel(day.date)
+                            let isHovered = hoveredDate == d
+                            let claudeMins = toolStats(.claudeCode, in: day).durationSeconds / 60
+                            let codexMins = toolStats(.codex, in: day).durationSeconds / 60
 
-                    LineMark(x: .value("Date", d), y: .value("Minutes", claudeMins), series: .value("Tool", "Claude"))
-                        .foregroundStyle(by: .value("Tool", "Claude"))
-                        .interpolationMethod(.catmullRom)
-                    LineMark(x: .value("Date", d), y: .value("Minutes", cursorMins), series: .value("Tool", "Cursor"))
-                        .foregroundStyle(by: .value("Tool", "Cursor"))
-                        .interpolationMethod(.catmullRom)
-                    LineMark(x: .value("Date", d), y: .value("Minutes", codexMins), series: .value("Tool", "Codex"))
-                        .foregroundStyle(by: .value("Tool", "Codex"))
-                        .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("Date", d), y: .value("Minutes", claudeMins), series: .value("Tool", "Claude"))
+                                .foregroundStyle(by: .value("Tool", "Claude"))
+                                .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("Date", d), y: .value("Minutes", codexMins), series: .value("Tool", "Codex"))
+                                .foregroundStyle(by: .value("Tool", "Codex"))
+                                .interpolationMethod(.catmullRom)
 
-                    if isHovered {
-                        RuleMark(x: .value("Date", d))
-                            .foregroundStyle(.gray.opacity(0.3))
-                            .lineStyle(StrokeStyle(dash: [4, 4]))
-                            .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                                VStack(spacing: 2) {
-                                    Text(shortDate(day.date))
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.primary.opacity(0.55))
-                                    HStack(spacing: 6) {
-                                        Text(shortDuration(claudeMins * 60)).foregroundStyle(Self.claudeColor)
-                                        Text(shortDuration(cursorMins * 60)).foregroundStyle(.purple)
-                                        Text(shortDuration(codexMins * 60)).foregroundStyle(Self.codexColor)
+                            if isHovered {
+                                RuleMark(x: .value("Date", d))
+                                    .foregroundStyle(.gray.opacity(0.3))
+                                    .lineStyle(StrokeStyle(dash: [4, 4]))
+                                    .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                                        VStack(spacing: 2) {
+                                            Text(shortDate(day.date))
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.primary.opacity(0.55))
+                                            HStack(spacing: 6) {
+                                                Text(shortDuration(claudeMins * 60)).foregroundStyle(Self.claudeColor)
+                                                Text(shortDuration(codexMins * 60)).foregroundStyle(Self.codexColor)
+                                            }
+                                            .font(.system(size: 10).bold().monospacedDigit())
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                                        .offset(y: 30)
                                     }
-                                    .font(.system(size: 10).bold().monospacedDigit())
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
-                                .offset(y: 30)
-                            }
 
-                        chartPoint(x: d, y: claudeMins, color: Self.claudeColor, size: 30)
-                        chartPoint(x: d, y: cursorMins, color: .purple, size: 30)
-                        chartPoint(x: d, y: codexMins, color: Self.codexColor, size: 30)
-                    } else if !compactMode {
-                        chartPoint(x: d, y: claudeMins, color: Self.claudeColor, size: 12)
-                        chartPoint(x: d, y: cursorMins, color: .purple, size: 12)
-                        chartPoint(x: d, y: codexMins, color: Self.codexColor, size: 12)
-                    }
-                }
-            }
-            .chartForegroundStyleScale([
-                "Claude": Self.claudeColor,
-                "Cursor": Color.purple,
-                "Codex": Self.codexColor,
-            ])
-            .chartLegend(.hidden)
-            .chartYAxis {
-                AxisMarks(position: .leading) { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        if let minutes = value.as(Double.self) {
-                            Text(talkAxisLabel(minutes))
-                                .font(.system(size: 9))
+                                chartPoint(x: d, y: claudeMins, color: Self.claudeColor, size: 30)
+                                chartPoint(x: d, y: codexMins, color: Self.codexColor, size: 30)
+                            } else if !compactMode {
+                                chartPoint(x: d, y: claudeMins, color: Self.claudeColor, size: 12)
+                                chartPoint(x: d, y: codexMins, color: Self.codexColor, size: 12)
+                            }
                         }
                     }
                 }
-            }
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        if let label = value.as(String.self), !compactMode || shouldShowXLabel(label, in: dateLabels) {
-                            Text(label)
-                                .font(.system(size: 9))
+                .chartForegroundStyleScale([
+                    "Claude": Self.claudeColor,
+                    "Codex": Self.codexColor,
+                ])
+                .chartLegend(.hidden)
+                .chartYScale(domain: 0...yUpperBound)
+                .chartYAxis {
+                    if hasData {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let minutes = value.as(Double.self) {
+                                    Text(talkAxisLabel(minutes))
+                                        .font(.system(size: 9))
+                                }
+                            }
                         }
                     }
                 }
-            }
-            .chartOverlay { proxy in
-                chartHoverOverlay(proxy: proxy, labels: dateLabels, hoveredLabel: $hoveredDate)
+                .chartXAxis {
+                    AxisMarks(values: .automatic) { value in
+                        AxisValueLabel {
+                            if let label = value.as(String.self), !compactMode || shouldShowXLabel(label, in: dateLabels) {
+                                Text(label)
+                                    .font(.system(size: 9))
+                            }
+                        }
+                    }
+                }
+                .chartOverlay { proxy in
+                    if hasData {
+                        chartHoverOverlay(proxy: proxy, labels: dateLabels, hoveredLabel: $hoveredDate)
+                    }
+                }
+
+                if !hasData {
+                    emptyChartMessage("No coding activity")
+                }
             }
             .frame(height: 120)
         }
@@ -671,6 +687,13 @@ struct ActivityBarComponentView: View {
         let days = controller.inputStats.recentDays(count: chartRange.dayCount, endingAt: selectedDate)
         let compactMode = chartRange.dayCount > 7
         let dateLabels = days.map { chartLabel($0.date) }
+        let hasData = days.contains { $0.totalInputs > 0 }
+        let maxInputCount = days
+            .map { day in
+                Swift.max(day.keystrokes, Swift.max(day.pointerClicks, day.scrollEvents))
+            }
+            .max() ?? 0
+        let yUpperBound = Swift.max(Double(maxInputCount) * 1.15, 1)
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -682,72 +705,95 @@ struct ActivityBarComponentView: View {
             }
             .padding(.horizontal, 6)
 
-            Chart {
-                ForEach(days) { day in
-                    let d = chartLabel(day.date)
-                    let isHovered = hoveredDate == d
+            ZStack {
+                Chart {
+                    if hasData {
+                        ForEach(days) { day in
+                            let d = chartLabel(day.date)
+                            let isHovered = hoveredDate == d
 
-                    LineMark(x: .value("Date", d), y: .value("Count", day.keystrokes), series: .value("Metric", "Keystrokes"))
-                        .foregroundStyle(by: .value("Metric", "Keystrokes"))
-                        .interpolationMethod(.catmullRom)
-                    LineMark(x: .value("Date", d), y: .value("Count", day.pointerClicks), series: .value("Metric", "Clicks"))
-                        .foregroundStyle(by: .value("Metric", "Clicks"))
-                        .interpolationMethod(.catmullRom)
-                    LineMark(x: .value("Date", d), y: .value("Count", day.scrollEvents), series: .value("Metric", "Scrolls"))
-                        .foregroundStyle(by: .value("Metric", "Scrolls"))
-                        .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("Date", d), y: .value("Count", day.keystrokes), series: .value("Metric", "Keystrokes"))
+                                .foregroundStyle(by: .value("Metric", "Keystrokes"))
+                                .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("Date", d), y: .value("Count", day.pointerClicks), series: .value("Metric", "Clicks"))
+                                .foregroundStyle(by: .value("Metric", "Clicks"))
+                                .interpolationMethod(.catmullRom)
+                            LineMark(x: .value("Date", d), y: .value("Count", day.scrollEvents), series: .value("Metric", "Scrolls"))
+                                .foregroundStyle(by: .value("Metric", "Scrolls"))
+                                .interpolationMethod(.catmullRom)
 
-                    if isHovered {
-                        RuleMark(x: .value("Date", d))
-                            .foregroundStyle(.gray.opacity(0.3))
-                            .lineStyle(StrokeStyle(dash: [4, 4]))
-                            .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                                VStack(spacing: 2) {
-                                    Text(shortDate(day.date))
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.primary.opacity(0.55))
-                                    HStack(spacing: 6) {
-                                        Text("\(day.keystrokes)").foregroundStyle(.blue)
-                                        Text("\(day.pointerClicks)").foregroundStyle(.orange)
-                                        Text("\(day.scrollEvents)").foregroundStyle(.green)
+                            if isHovered {
+                                RuleMark(x: .value("Date", d))
+                                    .foregroundStyle(.gray.opacity(0.3))
+                                    .lineStyle(StrokeStyle(dash: [4, 4]))
+                                    .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                                        VStack(spacing: 2) {
+                                            Text(shortDate(day.date))
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.primary.opacity(0.55))
+                                            HStack(spacing: 6) {
+                                                Text("\(day.keystrokes)").foregroundStyle(.blue)
+                                                Text("\(day.pointerClicks)").foregroundStyle(.orange)
+                                                Text("\(day.scrollEvents)").foregroundStyle(.green)
+                                            }
+                                            .font(.system(size: 10).bold().monospacedDigit())
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                                        .offset(y: 30)
                                     }
-                                    .font(.system(size: 10).bold().monospacedDigit())
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
-                                .offset(y: 30)
-                            }
 
-                        chartPoint(x: d, y: Double(day.keystrokes), color: .blue, size: 30)
-                        chartPoint(x: d, y: Double(day.pointerClicks), color: .orange, size: 30)
-                        chartPoint(x: d, y: Double(day.scrollEvents), color: .green, size: 30)
-                    } else if !compactMode {
-                        chartPoint(x: d, y: Double(day.keystrokes), color: .blue, size: 12)
-                        chartPoint(x: d, y: Double(day.pointerClicks), color: .orange, size: 12)
-                        chartPoint(x: d, y: Double(day.scrollEvents), color: .green, size: 12)
-                    }
-                }
-            }
-            .chartForegroundStyleScale([
-                "Keystrokes": Color.blue,
-                "Clicks": Color.orange,
-                "Scrolls": Color.green,
-            ])
-            .chartLegend(.hidden)
-            .chartXAxis {
-                AxisMarks(values: .automatic) { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        if let label = value.as(String.self), !compactMode || shouldShowXLabel(label, in: dateLabels) {
-                            Text(label)
-                                .font(.system(size: 9))
+                                chartPoint(x: d, y: Double(day.keystrokes), color: .blue, size: 30)
+                                chartPoint(x: d, y: Double(day.pointerClicks), color: .orange, size: 30)
+                                chartPoint(x: d, y: Double(day.scrollEvents), color: .green, size: 30)
+                            } else if !compactMode {
+                                chartPoint(x: d, y: Double(day.keystrokes), color: .blue, size: 12)
+                                chartPoint(x: d, y: Double(day.pointerClicks), color: .orange, size: 12)
+                                chartPoint(x: d, y: Double(day.scrollEvents), color: .green, size: 12)
+                            }
                         }
                     }
                 }
-            }
-            .chartOverlay { proxy in
-                chartHoverOverlay(proxy: proxy, labels: dateLabels, hoveredLabel: $hoveredDate)
+                .chartForegroundStyleScale([
+                    "Keystrokes": Color.blue,
+                    "Clicks": Color.orange,
+                    "Scrolls": Color.green,
+                ])
+                .chartLegend(.hidden)
+                .chartYScale(domain: 0...yUpperBound)
+                .chartYAxis {
+                    if hasData {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let count = value.as(Double.self) {
+                                    Text(ActivityBarFormatting.count(Int(count)))
+                                        .font(.system(size: 9))
+                                }
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic) { value in
+                        AxisValueLabel {
+                            if let label = value.as(String.self), !compactMode || shouldShowXLabel(label, in: dateLabels) {
+                                Text(label)
+                                    .font(.system(size: 9))
+                            }
+                        }
+                    }
+                }
+                .chartOverlay { proxy in
+                    if hasData {
+                        chartHoverOverlay(proxy: proxy, labels: dateLabels, hoveredLabel: $hoveredDate)
+                    }
+                }
+
+                if !hasData {
+                    emptyChartMessage("No input activity")
+                }
             }
             .frame(height: 120)
         }
@@ -855,6 +901,13 @@ struct ActivityBarComponentView: View {
         }
     }
 
+    private func emptyChartMessage(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.primary.opacity(0.4))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
     private func chartPoint(x: String, y: Double, color: Color, size: CGFloat) -> some ChartContent {
         PointMark(x: .value("Date", x), y: .value("Value", y))
             .foregroundStyle(color)
@@ -935,7 +988,7 @@ struct ActivityBarComponentView: View {
     }
 
     private func codingToolRows(for day: ActivityBarCodingDailyStats) -> [CodingToolDisplayRow] {
-        let knownRows = ActivityBarCodingTool.allCases.compactMap { tool -> CodingToolDisplayRow? in
+        let knownRows = Self.visibleCodingTools.compactMap { tool -> CodingToolDisplayRow? in
             let stats = toolStats(tool, in: day)
             guard hasCodingStats(stats) else {
                 return nil
@@ -960,7 +1013,7 @@ struct ActivityBarComponentView: View {
         return [
             CodingToolDisplayRow(
                 id: "ai-tools",
-                name: "Claude / Cursor / Codex",
+                name: "Claude / Codex",
                 duration: aggregateStats.durationSeconds,
                 detail: codingDetailText(for: aggregateStats),
                 tint: Self.codexColor,
@@ -1019,6 +1072,29 @@ struct ActivityBarComponentView: View {
         }
 
         return ActivityBarProjectStats()
+    }
+
+    private func visibleCodingAggregateStats(in day: ActivityBarCodingDailyStats) -> ActivityBarProjectStats {
+        let visibleToolStats = Self.visibleCodingTools.map { toolStats($0, in: day) }
+        if visibleToolStats.contains(where: { hasCodingStats($0) }) {
+            return visibleToolStats.reduce(ActivityBarProjectStats()) { result, stats in
+                ActivityBarProjectStats(
+                    durationSeconds: result.durationSeconds + stats.durationSeconds,
+                    wordCount: result.wordCount + stats.wordCount,
+                    toolCallCount: result.toolCallCount + stats.toolCallCount
+                )
+            }
+        }
+
+        guard day.perTool.isEmpty else {
+            return ActivityBarProjectStats()
+        }
+
+        return ActivityBarProjectStats(
+            durationSeconds: day.durationSeconds,
+            wordCount: day.wordCount,
+            toolCallCount: day.toolCallCount
+        )
     }
 
     private func hasCodingStats(_ stats: ActivityBarProjectStats) -> Bool {
