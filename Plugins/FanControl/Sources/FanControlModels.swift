@@ -74,12 +74,18 @@ enum FanRPMLimits {
 
 enum FanWriteError: Error, LocalizedError {
     case helperNotFound
+    case helperInstallFailed(String)
+    case helperVerificationFailed
     case writeFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .helperNotFound:
-            return "未找到 smc-helper 工具。请先按照说明安装它。"
+            return "未找到内置风扇控制组件。请重新安装风扇控制插件。"
+        case .helperInstallFailed(let msg):
+            return "安装风扇控制组件失败：\(msg)"
+        case .helperVerificationFailed:
+            return "风扇控制组件校验失败。请重新安装风扇控制插件。"
         case .writeFailed(let msg):
             return "写入风扇速度失败：\(msg)"
         }

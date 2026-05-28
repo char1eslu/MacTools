@@ -2,9 +2,9 @@
   "id": "activity-bar",
   "displayName": "活动统计",
   "summary": "统计输入、前台应用使用时长和 AI 编程活动",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "minHostVersion": "1.0.2",
-  "pluginKitVersion": 1,
+  "pluginKitVersion": 2,
   "bundleRelativePath": "ActivityBar.bundle",
   "factoryClass": "ActivityBarPlugin.ActivityBarPluginFactory",
   "build": {
@@ -16,5 +16,6 @@
     "componentPanel": true,
     "configuration": false
   },
-  "permissions": []
+  "permissions": [],
+  "category": "monitoring"
 }

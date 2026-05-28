@@ -1,15 +1,28 @@
 import SwiftUI
 import MacToolsPluginKit
 
+enum GeneralSettingsCardLayout {
+    static let horizontalPadding: CGFloat = 8
+    static let verticalPadding: CGFloat = 4
+    static let iconSize: CGFloat = 30
+    static let iconCornerRadius: CGFloat = 8
+    static let headerSpacing: CGFloat = 16
+    static let minRowHeight: CGFloat = 38
+}
+
 struct SettingsView: View {
     @ObservedObject var pluginHost: PluginHost
     @ObservedObject var appUpdater: AppUpdater
     @ObservedObject var menuBarIconSettings: MenuBarIconSettings
+    @ObservedObject var menuBarIconGallery: MenuBarIconGalleryLibrary
+    @ObservedObject var launchAtLoginController: LaunchAtLoginController
 
     var body: some View {
         TabView(selection: $pluginHost.selectedSettingsDestination) {
             GeneralSettingsView(
-                menuBarIconSettings: menuBarIconSettings
+                menuBarIconSettings: menuBarIconSettings,
+                menuBarIconGallery: menuBarIconGallery,
+                launchAtLoginController: launchAtLoginController
             )
                 .tag(SettingsDestination.general)
                 .tabItem {
@@ -38,18 +51,21 @@ private struct PermissionSettingsRow: View {
     let onAction: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: card.statusSystemImage)
-                .font(PluginSettingsTheme.Typography.pageDescription.weight(.semibold))
-                .foregroundStyle(statusColor)
-                .frame(width: PluginSettingsTheme.Size.rowIcon)
+        HStack(alignment: .center, spacing: PluginSettingsTheme.Spacing.rowContentControl) {
+            Image(systemName: card.iconSystemImage)
+                .pluginSettingsRowIconStyle(visualScale: card.iconVisualScale)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.rowTitleDescription) {
+                HStack(spacing: PluginSettingsTheme.Spacing.controlCluster) {
                     Text(card.title)
                         .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
 
-                    Text(card.statusText)
+                    Label {
+                        Text(card.statusText)
+                            .lineLimit(1)
+                    } icon: {
+                        Image(systemName: card.statusSystemImage)
+                    }
                         .font(PluginSettingsTheme.Typography.secondaryLabel)
                         .foregroundStyle(statusColor)
                 }
@@ -77,10 +93,18 @@ private struct PermissionSettingsRow: View {
 
 struct GeneralSettingsView: View {
     @ObservedObject var menuBarIconSettings: MenuBarIconSettings
+    @ObservedObject var menuBarIconGallery: MenuBarIconGalleryLibrary
+    @ObservedObject var launchAtLoginController: LaunchAtLoginController
     @AppStorage(AppAppearancePreference.userDefaultsKey) private var appearancePreferenceRawValue = AppAppearancePreference.system.rawValue
 
     var body: some View {
         Form {
+            Section {
+                LaunchAtLoginSettingsRow(controller: launchAtLoginController)
+            } header: {
+                Text("启动")
+            }
+            
             Section {
                 AppearanceSettingsRow(selection: appearancePreferenceBinding)
             } header: {
@@ -88,7 +112,10 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                MenuBarIconSettingsView(iconSettings: menuBarIconSettings)
+                MenuBarIconSettingsView(
+                    iconSettings: menuBarIconSettings,
+                    gallery: menuBarIconGallery
+                )
             } header: {
                 Text("状态栏图标")
             }
@@ -110,16 +137,16 @@ private struct AppearanceSettingsRow: View {
     @Binding var selection: AppAppearancePreference
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: GeneralSettingsCardLayout.headerSpacing) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: GeneralSettingsCardLayout.iconCornerRadius, style: .continuous)
                     .fill(Color.accentColor.opacity(0.12))
 
                 Image(systemName: "circle.lefthalf.filled")
                     .font(PluginSettingsTheme.Typography.pageDescription.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
             }
-            .frame(width: 30, height: 30)
+            .frame(width: GeneralSettingsCardLayout.iconSize, height: GeneralSettingsCardLayout.iconSize)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("应用外观")
@@ -140,12 +167,68 @@ private struct AppearanceSettingsRow: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 220)
         }
-        .frame(minHeight: 38)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: GeneralSettingsCardLayout.minRowHeight, alignment: .leading)
+        .padding(.horizontal, GeneralSettingsCardLayout.horizontalPadding)
+        .padding(.vertical, GeneralSettingsCardLayout.verticalPadding)
         .help("设置应用外观")
+    }
+}
+
+private struct LaunchAtLoginSettingsRow: View {
+    @ObservedObject var controller: LaunchAtLoginController
+    @State private var toggleID = UUID()
+
+    var body: some View {
+        HStack(spacing: GeneralSettingsCardLayout.headerSpacing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: GeneralSettingsCardLayout.iconCornerRadius, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+
+                Image(systemName: "power")
+                    .font(PluginSettingsTheme.Typography.pageDescription.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: GeneralSettingsCardLayout.iconSize, height: GeneralSettingsCardLayout.iconSize)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("开机时启动")
+                    .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
+
+                Text(subtitle)
+                    .font(PluginSettingsTheme.Typography.rowDescription)
+                    .foregroundStyle(controller.lastErrorMessage == nil ? .secondary : Color.orange)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("开机时启动 MacTools", isOn: enabledBinding)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .id(toggleID)
+        }
+        .frame(maxWidth: .infinity, minHeight: GeneralSettingsCardLayout.minRowHeight, alignment: .leading)
+        .padding(.horizontal, GeneralSettingsCardLayout.horizontalPadding)
+        .padding(.vertical, GeneralSettingsCardLayout.verticalPadding)
+        .help("登录系统时自动启动 MacTools 并显示在菜单栏。")
+        .onAppear {
+            DispatchQueue.main.async {
+                toggleID = UUID()
+            }
+        }
+    }
+
+    private var enabledBinding: Binding<Bool> {
+        Binding {
+            controller.isEnabled
+        } set: { newValue in
+            controller.setEnabled(newValue)
+        }
+    }
+
+    private var subtitle: String {
+        controller.lastErrorMessage ?? "登录系统时自动启动 MacTools 并显示在菜单栏。"
     }
 }
 
@@ -159,10 +242,6 @@ private struct FeatureSettingsView: View {
                 selection: selectionBinding
             )
             .frame(width: 220)
-
-            Rectangle()
-                .fill(SettingsStyle.separator)
-                .frame(width: 1)
 
             FeatureSettingsDetailPane(pluginHost: pluginHost)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -325,6 +404,8 @@ private struct FeatureSettingsDetailPane: View {
 
 private struct InstalledFeaturesSettingsView: View {
     @ObservedObject var pluginHost: PluginHost
+    @State private var searchText: String = ""
+    @State private var selectedFilter: PluginCategoryFilter = .all
 
     var body: some View {
         ScrollView {
@@ -336,6 +417,15 @@ private struct InstalledFeaturesSettingsView: View {
                     iconTint: .green
                 )
 
+                if !pluginHost.featureManagementItems.isEmpty {
+                    PluginFilterBarView(
+                        searchText: $searchText,
+                        selectedFilter: $selectedFilter,
+                        countsByFilter: countsByFilter,
+                        searchPrompt: "搜索已安装插件"
+                    )
+                }
+
                 SettingsCardContainer {
                     if pluginHost.featureManagementItems.isEmpty {
                         ContentUnavailableView(
@@ -344,9 +434,17 @@ private struct InstalledFeaturesSettingsView: View {
                             description: Text("安装插件后，会显示在这里。")
                         )
                         .frame(maxWidth: .infinity, minHeight: 180)
+                    } else if filteredItems.isEmpty {
+                        ContentUnavailableView(
+                            "未找到匹配的插件",
+                            systemImage: "magnifyingglass",
+                            description: Text("尝试调整关键字或切换分类。")
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 180)
                     } else {
                         FeatureManagementTableView(
-                            items: pluginHost.featureManagementItems,
+                            items: filteredItems,
+                            isReorderEnabled: !isFiltering,
                             onVisibilityChange: { pluginID, isVisible in
                                 pluginHost.setFeatureVisibility(isVisible, for: pluginID)
                             },
@@ -357,6 +455,13 @@ private struct InstalledFeaturesSettingsView: View {
                         .frame(height: featureManagementListHeight)
                     }
                 }
+
+                if isFiltering && !filteredItems.isEmpty {
+                    Text("筛选中暂时不能拖拽排序，清除关键字或选择「全部」即可重新排序。")
+                        .font(PluginSettingsTheme.Typography.rowDescription)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
             }
             .padding(PluginSettingsTheme.Spacing.pagePadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -364,8 +469,25 @@ private struct InstalledFeaturesSettingsView: View {
         .background(SettingsStyle.contentBackground)
     }
 
+    private var filteredItems: [PluginFeatureManagementItem] {
+        pluginHost.featureManagementItems.filter {
+            PluginListFilter.matches(featureItem: $0, query: searchText, filter: selectedFilter)
+        }
+    }
+
+    private var countsByFilter: [PluginCategoryFilter: Int] {
+        PluginListFilter.countsByFilter(
+            featureItems: pluginHost.featureManagementItems,
+            query: searchText
+        )
+    }
+
+    private var isFiltering: Bool {
+        !PluginListFilter.normalized(searchText).isEmpty || selectedFilter != .all
+    }
+
     private var featureManagementListHeight: CGFloat {
-        FeatureManagementTableView.preferredHeight(for: pluginHost.featureManagementItems.count)
+        FeatureManagementTableView.preferredHeight(for: filteredItems.count)
     }
 }
 
@@ -390,36 +512,52 @@ private struct PluginConfigurationDetailPane: View {
     var body: some View {
         Group {
             if let item {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
+                if item.prefersFullHeight {
+                    // 全高度布局：header 固定在顶部，自定义视图填满剩余空间
+                    VStack(alignment: .leading, spacing: 0) {
                         PluginConfigurationHeader(item: item)
-
-                        if !item.settingsCards.isEmpty {
-                            PluginSettingsCardSection(
-                                pluginHost: pluginHost,
-                                cards: item.settingsCards
-                            )
-                        }
-
-                        if !item.permissionCards.isEmpty {
-                            PluginPermissionCardSection(
-                                pluginHost: pluginHost,
-                                cards: item.permissionCards
-                            )
-                        }
-
-                        if !item.shortcutItems.isEmpty {
-                            PluginShortcutSection(pluginHost: pluginHost, items: item.shortcutItems)
-                        }
+                            .padding(PluginSettingsTheme.Spacing.pagePadding)
 
                         if item.hasCustomConfiguration {
                             pluginHost.pluginConfigurationViewItem(for: item.pluginID).content
+                                .padding(.horizontal, PluginSettingsTheme.Spacing.pagePadding)
+                                .padding(.bottom, PluginSettingsTheme.Spacing.pagePadding)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
                     }
-                    .padding(PluginSettingsTheme.Spacing.pagePadding)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            PluginConfigurationHeader(item: item)
+
+                            if !item.settingsCards.isEmpty {
+                                PluginSettingsCardSection(
+                                    pluginHost: pluginHost,
+                                    cards: item.settingsCards
+                                )
+                            }
+
+                            if !item.permissionCards.isEmpty {
+                                PluginPermissionCardSection(
+                                    pluginHost: pluginHost,
+                                    cards: item.permissionCards
+                                )
+                            }
+
+                            if !item.shortcutItems.isEmpty {
+                                PluginShortcutSection(pluginHost: pluginHost, items: item.shortcutItems)
+                            }
+
+                            if item.hasCustomConfiguration {
+                                pluginHost.pluginConfigurationViewItem(for: item.pluginID).content
+                            }
+                        }
+                        .padding(PluginSettingsTheme.Spacing.pagePadding)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .background(SettingsStyle.contentBackground)
                 }
-                .background(SettingsStyle.contentBackground)
             } else {
                 ContentUnavailableView(
                     "暂无可配置插件",
@@ -499,7 +637,7 @@ private struct PluginSettingsCardSection: View {
                     )
 
                     if index < cards.count - 1 {
-                        SettingsSectionDivider()
+                        PluginSettingsListDivider()
                     }
                 }
             }
@@ -578,7 +716,7 @@ private struct PluginPermissionCardSection: View {
                     .padding(.vertical, 10)
 
                     if index < cards.count - 1 {
-                        SettingsSectionDivider()
+                        PluginSettingsListDivider()
                     }
                 }
             }
@@ -627,15 +765,6 @@ private struct PluginConfigurationSection<Content: View>: View {
     }
 }
 
-private struct SettingsSectionDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(SettingsStyle.separator)
-            .frame(height: 1)
-            .padding(.horizontal, 16)
-    }
-}
-
 private func statusColor(for tone: PluginStatusTone) -> Color {
     switch tone {
     case .neutral:
@@ -664,7 +793,7 @@ struct AboutSettingsView: View {
 
             Text(AppMetadata.appName)
                 .font(.system(size: 22, weight: .bold))
-                .padding(.top, 18)
+                .padding(.top, 8)
 
             Text("版本 \(AppMetadata.versionDescription)")
                 .font(.title3)
@@ -763,21 +892,23 @@ private struct AboutUpdatePrimaryButtonStyle: ButtonStyle {
 }
 
 private struct AppIconPreview: View {
+    private static let iconSize: CGFloat = 82
+
     var body: some View {
-        Group {
-            if let appIcon = AppMetadata.appIcon {
-                Image(nsImage: appIcon)
-                    .resizable()
-            } else {
-                Image(systemName: "wrench.and.screwdriver.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(12)
-                    .foregroundStyle(.secondary)
-                    .background(PluginSettingsTheme.Palette.nativeCardBackground)
-            }
+        if let appIcon = AppMetadata.appIcon {
+            Image(nsImage: appIcon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Self.iconSize, height: Self.iconSize)
+        } else {
+            Image(systemName: "wrench.and.screwdriver.fill")
+                .resizable()
+                .scaledToFit()
+                .padding(12)
+                .foregroundStyle(.secondary)
+                .background(PluginSettingsTheme.Palette.nativeCardBackground)
+                .frame(width: Self.iconSize, height: Self.iconSize)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
-        .frame(width: 64, height: 64)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

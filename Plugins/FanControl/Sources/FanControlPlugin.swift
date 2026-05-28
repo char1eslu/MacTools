@@ -26,7 +26,7 @@ private enum ControlID {
     static let customSlider = "fan-custom-rpm"
     static let addPreset    = "fan-add-preset"
     static let deletePreset = "fan-delete-preset"
-    static let installGuide = "fan-install-guide"
+    static let missingHelper = "fan-missing-helper"
 }
 
 // MARK: - Plugin
@@ -74,11 +74,11 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
     init(
         context: PluginRuntimeContext = PluginRuntimeContext(pluginID: "fan-control"),
         smcReader: any FanControlSMCReading = FanControlSMCReader(),
-        smcWriter: any FanControlSMCWriting = FanControlSMCWriter()
+        smcWriter: (any FanControlSMCWriting)? = nil
     ) {
         self.presetStore = FanControlPresetStore(storage: context.storage)
         self.smcReader = smcReader
-        self.smcWriter = smcWriter
+        self.smcWriter = smcWriter ?? FanControlSMCWriter(resourceBundle: context.resourceBundle)
     }
 
     // MARK: - MacToolsPlugin
@@ -128,7 +128,7 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
     var shortcutDefinitions: [PluginShortcutDefinition] { [] }
 
     var configuration: PluginConfiguration? {
-        PluginConfiguration(description: "管理风扇转速预设，支持自定义名称和转速") { [self] _ in
+        PluginConfiguration(description: metadata.defaultDescription) { [self] _ in
             FanControlPresetManagerView(
                 presetStore: self.presetStore,
                 fanSnapshot: self.fanSnapshot
@@ -195,9 +195,6 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
             // Active preset has been reset to auto by the store
             applyActivePreset()
 
-        case ControlID.installGuide:
-            openInstallGuide()
-
         default:
             break
         }
@@ -214,11 +211,6 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
             lastErrorMessage = nil
         }
         onStateChange?()
-    }
-
-    private func openInstallGuide() {
-        let url = URL(string: "https://github.com/mohamadtorchani/solofan#installation")!
-        NSWorkspace.shared.open(url)
     }
 
     // MARK: - Monitoring
@@ -378,7 +370,7 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
         // 5. Helper-not-found warning
         if !smcWriter.isHelperAvailable {
             controls.append(PluginPanelControl(
-                id: ControlID.installGuide,
+                id: ControlID.missingHelper,
                 kind: .actionRow,
                 options: [],
                 selectedOptionID: nil,
@@ -387,11 +379,11 @@ final class FanControlPlugin: MacToolsPlugin, PluginPrimaryPanel {
                 displayedComponents: nil,
                 datePickerStyle: nil,
                 sectionTitle: nil,
-                actionTitle: "安装风扇控制助手…",
+                actionTitle: "风扇控制组件缺失",
                 actionIconSystemName: "exclamationmark.triangle",
                 actionBehavior: .dismissBeforeHandling,
                 showsLeadingDivider: true,
-                isEnabled: true
+                isEnabled: false
             ))
         }
 

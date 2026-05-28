@@ -1,114 +1,89 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import MacToolsPluginKit
 
 struct MenuBarIconSettingsView: View {
     @ObservedObject var iconSettings: MenuBarIconSettings
+    @ObservedObject var gallery: MenuBarIconGalleryLibrary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             header
 
-            MenuBarIconEditorControls(iconSettings: iconSettings)
+            MenuBarIconEditorControls(iconSettings: iconSettings, gallery: gallery)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, GeneralSettingsCardLayout.horizontalPadding)
+        .padding(.vertical, GeneralSettingsCardLayout.verticalPadding)
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("状态栏图标")
-                    .font(.system(size: 13, weight: .semibold))
+        HStack(spacing: GeneralSettingsCardLayout.headerSpacing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: GeneralSettingsCardLayout.iconCornerRadius, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
 
-                Text("为浅色和深色菜单栏统一设置图标，导入时会自动扣除纯色背景。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "menubar.rectangle")
+                    .font(PluginSettingsTheme.Typography.pageDescription.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
             }
+            .frame(width: GeneralSettingsCardLayout.iconSize, height: GeneralSettingsCardLayout.iconSize)
 
-            Spacer()
+            VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.rowTitleDescription) {
+                Text("菜单栏图标")
+                    .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
+
+                Text("统一设置浅色和深色菜单栏图标，导入时会自动扣除纯色背景。")
+                    .font(PluginSettingsTheme.Typography.rowDescription)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 iconSettings.resetToDefault()
             } label: {
                 Label("恢复默认", systemImage: "arrow.counterclockwise")
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(!iconSettings.hasCustomIcon)
         }
+        .frame(maxWidth: .infinity, minHeight: GeneralSettingsCardLayout.minRowHeight, alignment: .leading)
+        .help("设置菜单栏图标")
     }
 }
 
 private struct MenuBarIconEditorControls: View {
     @ObservedObject var iconSettings: MenuBarIconSettings
-    @State private var showsAnimationOptions = false
+    @ObservedObject var gallery: MenuBarIconGalleryLibrary
+    @State private var sliderID = UUID()
 
     private let rowLabelWidth: CGFloat = 76
     private let contentWidth: CGFloat = 520
+    private let animationModePickerWidth: CGFloat = 240
+    private let manualSpeedSliderWidth: CGFloat = 180
     private var sourceButtonWidth: CGFloat {
         (contentWidth - 8) / 2
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            controlRow("菜单栏预览", alignment: .top) {
-                MenuBarIconPreviewPair(
-                    lightPayload: iconSettings.imagePayload(for: NSAppearance(named: .aqua)),
-                    darkPayload: iconSettings.imagePayload(for: NSAppearance(named: .darkAqua))
-                )
-                .frame(width: contentWidth)
-            }
-
             controlRow("图标来源") {
                 actionButtons
             }
 
-            Text("支持图片、轻量 GIF/MP4 和内置动态图标；导入时会自动扣除纯色背景。")
-                .font(.footnote)
+            Text("支持图片、轻量 GIF/MP4 和在线动态图标；导入时会自动扣除纯色背景。")
+                .font(PluginSettingsTheme.Typography.rowDescription)
                 .foregroundStyle(.secondary)
                 .frame(width: contentWidth, alignment: .leading)
-                .padding(.leading, rowLabelWidth + 12)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        showsAnimationOptions.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Text("动画播放")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(width: rowLabelWidth, alignment: .leading)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(showsAnimationOptions ? 90 : 0))
-                            .frame(width: 12)
-
-                        Text(animationSummary)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-                    }
-                    .frame(width: rowLabelWidth + 12 + contentWidth, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-
-                if showsAnimationOptions {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Divider()
-                            .padding(.leading, rowLabelWidth + 24)
-
-                        animationSpeedControls
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
+            animationSpeedControls
 
             controlRow("最近使用", alignment: .top) {
-                MenuBarIconRecentGrid(iconSettings: iconSettings)
+                MenuBarIconRecentGrid(iconSettings: iconSettings, gallery: gallery)
                     .frame(width: contentWidth, alignment: .leading)
             }
 
@@ -116,7 +91,7 @@ private struct MenuBarIconEditorControls: View {
                 ?? iconSettings.contrastReport(for: .dark).warningText {
                 contentOnlyRow {
                     Label(warningText, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
+                        .font(PluginSettingsTheme.Typography.rowDescription)
                         .foregroundStyle(.orange)
                 }
             }
@@ -124,7 +99,7 @@ private struct MenuBarIconEditorControls: View {
             if let errorMessage = iconSettings.lastErrorMessage {
                 contentOnlyRow {
                     Label(errorMessage, systemImage: "xmark.circle")
-                        .font(.footnote)
+                        .font(PluginSettingsTheme.Typography.rowDescription)
                         .foregroundStyle(.red)
                 }
             }
@@ -138,12 +113,14 @@ private struct MenuBarIconEditorControls: View {
     ) -> some View {
         HStack(alignment: alignment, spacing: 12) {
             Text(title)
-                .font(.footnote)
+                .font(PluginSettingsTheme.Typography.secondaryLabel)
                 .foregroundStyle(.secondary)
                 .frame(width: rowLabelWidth, alignment: .leading)
 
             content()
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func contentOnlyRow<Content: View>(
@@ -155,7 +132,9 @@ private struct MenuBarIconEditorControls: View {
 
             content()
                 .frame(width: contentWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var actionButtons: some View {
@@ -169,7 +148,7 @@ private struct MenuBarIconEditorControls: View {
             .buttonStyle(.borderedProminent)
             .frame(width: sourceButtonWidth)
 
-            MenuBarIconBuiltInPicker(iconSettings: iconSettings)
+            MenuBarIconGalleryPicker(iconSettings: iconSettings, gallery: gallery)
             .frame(width: sourceButtonWidth)
         }
         .frame(width: contentWidth, alignment: .leading)
@@ -188,42 +167,13 @@ private struct MenuBarIconEditorControls: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: contentWidth)
-            }
-
-            contentOnlyRow {
-                Text(speedDescription)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .frame(width: animationModePickerWidth, alignment: .leading)
+                .frame(width: contentWidth, alignment: .leading)
             }
 
             controlRow("倍率") {
-                HStack(spacing: 12) {
-                    Slider(
-                        value: Binding(
-                            get: { iconSettings.manualAnimationSpeedMultiplier },
-                            set: { iconSettings.manualAnimationSpeedMultiplier = $0 }
-                        ),
-                        in: MenuBarIconAnimationSpeedPolicy.minimumMultiplier...MenuBarIconAnimationSpeedPolicy.maximumMultiplier
-                    )
-                    .disabled(iconSettings.animationSpeedMode != .manual)
-                    .frame(width: contentWidth - 50)
-
-                    Text(String(format: "%.1fx", iconSettings.manualAnimationSpeedMultiplier))
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 38, alignment: .trailing)
-                }
+                animationMultiplierControls
             }
-        }
-    }
-
-    private var animationSummary: String {
-        switch iconSettings.animationSpeedMode {
-        case .manual:
-            return String(format: "手动 %.1fx", iconSettings.manualAnimationSpeedMultiplier)
-        case .adaptiveSystemLoad:
-            return "随系统负载"
         }
     }
 
@@ -234,6 +184,50 @@ private struct MenuBarIconEditorControls: View {
         case .adaptiveSystemLoad:
             return "CPU、GPU、内存越高越快。"
         }
+    }
+
+    private var animationMultiplierControls: some View {
+        HStack(spacing: 12) {
+            Text(speedDescription)
+                .font(PluginSettingsTheme.Typography.rowDescription)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+
+            manualSpeedSlider
+                .opacity(isManualAnimationSpeed ? 1 : 0)
+                .disabled(!isManualAnimationSpeed)
+
+            Text(String(format: "%.1fx", iconSettings.manualAnimationSpeedMultiplier))
+                .font(PluginSettingsTheme.Typography.monospacedValue)
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+                .opacity(isManualAnimationSpeed ? 1 : 0)
+
+            Spacer(minLength: 0)
+        }
+        .frame(width: contentWidth, height: PluginSettingsTheme.Size.controlHeight, alignment: .leading)
+        .onAppear {
+            DispatchQueue.main.async {
+                sliderID = UUID()
+            }
+        }
+    }
+
+    private var isManualAnimationSpeed: Bool {
+        iconSettings.animationSpeedMode == .manual
+    }
+
+    private var manualSpeedSlider: some View {
+        Slider(
+            value: Binding(
+                get: { iconSettings.manualAnimationSpeedMultiplier },
+                set: { iconSettings.manualAnimationSpeedMultiplier = $0 }
+            ),
+            in: MenuBarIconAnimationSpeedPolicy.minimumMultiplier...MenuBarIconAnimationSpeedPolicy.maximumMultiplier
+        )
+        .labelsHidden()
+        .frame(width: manualSpeedSliderWidth)
+        .id(sliderID)
     }
 
     private func selectMedia() {
@@ -304,7 +298,7 @@ private struct MenuBarIconPreviewStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption)
+                .font(PluginSettingsTheme.Typography.statusBadge)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
@@ -353,19 +347,25 @@ private struct MenuBarIconPreviewStrip: View {
 
 private struct MenuBarIconRecentGrid: View {
     @ObservedObject var iconSettings: MenuBarIconSettings
+    @ObservedObject var gallery: MenuBarIconGalleryLibrary
+    @State private var activeRecentID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if iconSettings.recentItems.isEmpty {
                 Text("上传或选择图标后会显示在这里。")
-                    .font(.footnote)
+                    .font(PluginSettingsTheme.Typography.rowDescription)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
             } else {
                 HStack(spacing: 8) {
                     ForEach(iconSettings.recentItems.prefix(6)) { item in
                         Button {
-                            iconSettings.useRecentIcon(item)
+                            Task {
+                                activeRecentID = item.id
+                                _ = await gallery.selectRecentItem(item, iconSettings: iconSettings)
+                                activeRecentID = nil
+                            }
                         } label: {
                             ZStack(alignment: .bottomTrailing) {
                                 Image(nsImage: iconSettings.previewImage(for: item))
@@ -380,17 +380,11 @@ private struct MenuBarIconRecentGrid: View {
                                             .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                                     )
 
-                                if item.mediaKind == .animation {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 14, height: 14)
-                                        .background(Color.accentColor)
-                                        .clipShape(Circle())
-                                }
+                                badge(for: item)
                             }
                         }
                         .buttonStyle(.plain)
+                        .disabled(activeRecentID != nil)
                         .help(item.displayName)
                     }
                 }
@@ -399,16 +393,51 @@ private struct MenuBarIconRecentGrid: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    @ViewBuilder
+    private func badge(for item: MenuBarIconRecentItem) -> some View {
+        if activeRecentID == item.id {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 16, height: 16)
+                .background(.thinMaterial, in: Circle())
+        } else if iconSettings.remoteAssetSelection(forRecentItem: item) != nil,
+                  !iconSettings.isRemoteAssetCached(for: item) {
+            Image(systemName: "icloud.and.arrow.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 16, height: 16)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(Circle())
+        } else if item.mediaKind == .animation {
+            Image(systemName: "play.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 14, height: 14)
+                .background(Color.accentColor)
+                .clipShape(Circle())
+        }
+    }
 }
 
-private struct MenuBarIconBuiltInPicker: View {
+private struct MenuBarIconGalleryPicker: View {
     @ObservedObject var iconSettings: MenuBarIconSettings
-    @State private var selectedGroup: MenuBarIconBuiltInAnimationGroup = .featured
+    @ObservedObject var gallery: MenuBarIconGalleryLibrary
+    @State private var selectedCategoryID: String?
     @State private var isPickerPresented = false
+    @State private var activeAssetID: String?
 
-    private var filteredAnimations: [MenuBarIconBuiltInAnimation] {
-        iconSettings.builtInAnimations.filter { animation in
-            animation.group == selectedGroup
+    private var selectedCategory: String? {
+        selectedCategoryID ?? gallery.categories.first?.id
+    }
+
+    private var filteredAssets: [MenuBarIconGalleryAsset] {
+        guard let selectedCategory else {
+            return []
+        }
+
+        return gallery.assets.filter { asset in
+            asset.categoryID == selectedCategory
         }
     }
 
@@ -416,104 +445,207 @@ private struct MenuBarIconBuiltInPicker: View {
         Button {
             isPickerPresented.toggle()
         } label: {
-            Label("内置动态图标", systemImage: "sparkles")
+            Label("在线图库", systemImage: "sparkles")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
         .popover(isPresented: $isPickerPresented, arrowEdge: .bottom) {
             pickerContent
+                .task {
+                    await gallery.loadCatalogIfNeeded()
+                    if selectedCategoryID == nil {
+                        selectedCategoryID = gallery.categories.first?.id
+                    }
+                }
         }
     }
 
     private var pickerContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Text("内置动态图标")
-                    .font(.system(size: 13, weight: .semibold))
+                Text("在线图库")
+                    .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
 
                 Spacer()
 
-                Picker("分组", selection: $selectedGroup) {
-                    ForEach(MenuBarIconBuiltInAnimationGroup.allCases) { group in
-                        Text(group.title).tag(group)
+                if gallery.status.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 18, height: 18)
+                }
+
+                Button {
+                    Task {
+                        await gallery.refreshCatalog()
+                        selectedCategoryID = selectedCategoryID ?? gallery.categories.first?.id
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("刷新图库")
+                .disabled(gallery.status.isLoading)
+
+                Picker("分组", selection: Binding(
+                    get: { selectedCategoryID ?? gallery.categories.first?.id ?? "" },
+                    set: { selectedCategoryID = $0 }
+                )) {
+                    ForEach(gallery.categories) { category in
+                        Text(category.title).tag(category.id)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(width: 110)
+                .disabled(gallery.categories.isEmpty)
             }
 
+            content
+        }
+        .padding(14)
+        .frame(width: 488)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if gallery.status.isLoading && gallery.assets.isEmpty {
+            ProgressView()
+                .frame(width: 460, height: 300)
+        } else if gallery.assets.isEmpty {
+            ContentUnavailableView(
+                "图库不可用",
+                systemImage: "wifi.exclamationmark",
+                description: Text(gallery.lastErrorMessage ?? "稍后再试。")
+            )
+            .frame(width: 460, height: 300)
+        } else {
             ScrollView {
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.fixed(70), spacing: 8), count: 6),
                     alignment: .leading,
                     spacing: 10
                 ) {
-                    ForEach(filteredAnimations) { animation in
+                    ForEach(filteredAssets) { asset in
                         Button {
-                            iconSettings.useBuiltInAnimation(animation)
-                            isPickerPresented = false
-                        } label: {
-                            VStack(spacing: 6) {
-                                MenuBarIconAnimatedPreview(animation: animation)
-
-                                Text(animation.displayName)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .frame(width: 64)
+                            Task {
+                                activeAssetID = asset.id
+                                let didSelect = await gallery.selectAsset(asset, iconSettings: iconSettings)
+                                activeAssetID = nil
+                                if didSelect {
+                                    isPickerPresented = false
+                                }
                             }
-                            .frame(width: 70, height: 64)
+                        } label: {
+                            MenuBarIconGalleryAssetCell(
+                                asset: asset,
+                                state: gallery.state(for: asset),
+                                previewImage: gallery.previewImage(for: asset),
+                                isBusy: activeAssetID == asset.id,
+                                isSelected: iconSettings.selectedRemoteAsset?.id == asset.id
+                                    && iconSettings.selectedRemoteAsset?.version == asset.version
+                            )
                         }
                         .buttonStyle(.plain)
-                        .help("使用 \(animation.displayName)")
+                        .disabled(activeAssetID != nil)
+                        .help("使用 \(asset.title)")
+                        .task {
+                            await gallery.loadPreviewIfNeeded(for: asset)
+                        }
                     }
                 }
                 .padding(.vertical, 2)
             }
             .frame(width: 460, height: 300)
         }
-        .padding(14)
-        .frame(width: 488)
     }
 }
 
-private struct MenuBarIconAnimatedPreview: View {
-    let animation: MenuBarIconBuiltInAnimation
-    @State private var frames: [NSImage] = []
-
-    private var frameDuration: TimeInterval {
-        max(animation.frameDuration, 1.0 / 30.0)
-    }
+private struct MenuBarIconGalleryAssetCell: View {
+    let asset: MenuBarIconGalleryAsset
+    let state: MenuBarIconGalleryAssetState
+    let previewImage: NSImage?
+    let isBusy: Bool
+    let isSelected: Bool
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: frameDuration)) { context in
-            Image(nsImage: frame(for: context.date))
+        VStack(spacing: 6) {
+            ZStack(alignment: .bottomTrailing) {
+                preview
+                    .frame(width: 32, height: 20)
+                    .frame(width: 54, height: 34)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(borderColor, lineWidth: isSelected ? 2 : 1)
+                    )
+
+                badge
+            }
+
+            Text(asset.title)
+                .font(PluginSettingsTheme.Typography.statusBadge)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: 64)
+        }
+        .frame(width: 70, height: 64)
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let previewImage {
+            Image(nsImage: previewImage)
                 .resizable()
                 .renderingMode(.original)
                 .scaledToFit()
-                .frame(width: 32, height: 20)
-                .frame(width: 54, height: 34)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                )
+        } else {
+            Image(systemName: "photo")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
         }
-        .onAppear {
-            if frames.isEmpty {
-                frames = animation.loadFrames()
+    }
+
+    @ViewBuilder
+    private var badge: some View {
+        if isBusy {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 14, height: 14)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(Circle())
+        } else {
+            switch state {
+            case .cached:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(Circle())
+            case .failed:
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(Circle())
+            case .downloading:
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 14, height: 14)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(Circle())
+            case .available:
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(Circle())
             }
         }
     }
 
-    private func frame(for date: Date) -> NSImage {
-        guard !frames.isEmpty else {
-            return animation.loadFirstFrame() ?? NSImage(size: NSSize(width: 18, height: 18))
-        }
-
-        let frameIndex = Int(date.timeIntervalSinceReferenceDate / frameDuration) % frames.count
-        return frames[frameIndex]
+    private var borderColor: Color {
+        isSelected ? .accentColor : Color.primary.opacity(0.1)
     }
 }

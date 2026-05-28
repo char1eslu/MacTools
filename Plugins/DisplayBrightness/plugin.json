@@ -2,9 +2,9 @@
   "id": "display-brightness",
   "displayName": "显示器亮度",
   "summary": "快速调节每个显示器的亮度",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "minHostVersion": "1.0.2",
-  "pluginKitVersion": 1,
+  "pluginKitVersion": 2,
   "bundleRelativePath": "DisplayBrightness.bundle",
   "factoryClass": "DisplayBrightnessPlugin.DisplayBrightnessPluginFactory",
   "build": {
@@ -16,5 +16,6 @@
     "componentPanel": false,
     "configuration": false
   },
-  "permissions": []
+  "permissions": [],
+  "category": "display"
 }

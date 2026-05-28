@@ -55,9 +55,33 @@ PY
 BUNDLE_PATH="$PACKAGE/$BUNDLE_RELATIVE_PATH"
 [[ -d "$BUNDLE_PATH" ]] || { echo "Bundle not found: $BUNDLE_PATH" >&2; exit 1; }
 
+SIGN_PATHS=()
+while IFS= read -r relative_path; do
+    [[ -n "$relative_path" ]] || continue
+    [[ "$relative_path" != /* ]] || { echo "package.signPaths entries must be relative: $relative_path" >&2; exit 1; }
+    [[ "$relative_path" != *".."* ]] || { echo "package.signPaths entries must not contain '..': $relative_path" >&2; exit 1; }
+    SIGN_PATHS+=("$PACKAGE/$relative_path")
+done < <(python3 - "$PACKAGE/plugin.json" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1]))
+for path in ((data.get("package") or {}).get("signPaths") or []):
+    print(path)
+PY
+)
+
 sign_args=(--force --options runtime --timestamp --sign "$IDENTITY")
 if [[ -n "$KEYCHAIN" ]]; then
     sign_args+=(--keychain "$KEYCHAIN")
+fi
+
+if ((${#SIGN_PATHS[@]} > 0)); then
+    for path in "${SIGN_PATHS[@]}"; do
+        [[ -e "$path" ]] || { echo "Sign path not found: $path" >&2; exit 1; }
+        codesign "${sign_args[@]}" "$path"
+        codesign --verify --strict "$path"
+    done
 fi
 
 codesign "${sign_args[@]}" "$BUNDLE_PATH"

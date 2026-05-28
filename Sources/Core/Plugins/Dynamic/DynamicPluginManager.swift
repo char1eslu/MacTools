@@ -22,6 +22,29 @@ struct PluginManagementItem: Identifiable, Equatable {
     let packageURL: URL?
     let requiresRestartToFullyUnload: Bool
     let releaseNotesURL: URL?
+    let category: String?
+
+    init(
+        id: String,
+        title: String,
+        summary: String?,
+        version: String,
+        state: State,
+        packageURL: URL?,
+        requiresRestartToFullyUnload: Bool,
+        releaseNotesURL: URL?,
+        category: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.version = version
+        self.state = state
+        self.packageURL = packageURL
+        self.requiresRestartToFullyUnload = requiresRestartToFullyUnload
+        self.releaseNotesURL = releaseNotesURL
+        self.category = category
+    }
 
     var statusText: String {
         switch state {
@@ -141,7 +164,9 @@ final class DynamicPluginManager: ObservableObject {
 
             return loadedPluginsByID[record.id] == nil && !deferredPluginIDs.contains(record.id)
         }
-        let loadedResults = pluginLoader.loadInstalledPlugins(from: recordsToLoad)
+        let loadedResults = recordsToLoad.isEmpty
+            ? []
+            : pluginLoader.loadInstalledPlugins(from: recordsToLoad)
         let loadedResultsByID = Dictionary(
             uniqueKeysWithValues: loadedResults.map { ($0.record.id, $0) }
         )
@@ -263,6 +288,26 @@ final class DynamicPluginManager: ObservableObject {
 
     func isInstalledPlugin(_ pluginID: String) -> Bool {
         packageStore.installedRecords().contains { $0.id == pluginID }
+    }
+
+    func installedCapabilitiesByID() -> [String: PluginPackageManifest.Capabilities] {
+        Dictionary(
+            uniqueKeysWithValues: packageStore.installedRecords().compactMap { record in
+                guard record.state.isLoadable else {
+                    return nil
+                }
+
+                return (record.id, record.manifest.capabilities)
+            }
+        )
+    }
+
+    func installedCategoriesByID() -> [String: String?] {
+        Dictionary(
+            uniqueKeysWithValues: packageStore.installedRecords().map {
+                ($0.id, $0.manifest.category)
+            }
+        )
     }
 
     /// Deactivate a loaded plugin without unloading it.
@@ -418,7 +463,8 @@ final class DynamicPluginManager: ObservableObject {
                         state: catalogSnapshot?.isLocalDevelopment == true ? .localDevelopment : .available,
                         packageURL: nil,
                         requiresRestartToFullyUnload: false,
-                        releaseNotesURL: entry.releaseNotesURL
+                        releaseNotesURL: entry.releaseNotesURL,
+                        category: entry.category
                     )
                 )
             }
@@ -481,7 +527,8 @@ final class DynamicPluginManager: ObservableObject {
             state: state,
             packageURL: record.packageURL,
             requiresRestartToFullyUnload: record.requiresRestartToFullyUnload,
-            releaseNotesURL: catalogEntry?.releaseNotesURL
+            releaseNotesURL: catalogEntry?.releaseNotesURL,
+            category: catalogEntry?.category ?? record.manifest.category
         )
     }
 
@@ -491,6 +538,17 @@ final class DynamicPluginManager: ObservableObject {
 
     private func managementItemSort(_ lhs: PluginManagementItem, _ rhs: PluginManagementItem) -> Bool {
         lhs.title.localizedCompare(rhs.title) == .orderedAscending
+    }
+}
+
+private extension PluginPackageRecord.State {
+    var isLoadable: Bool {
+        switch self {
+        case .enabled, .disabled:
+            return true
+        case .incompatible, .failed:
+            return false
+        }
     }
 }
 

@@ -116,6 +116,95 @@ final class MenuBarPanelLayoutTests: XCTestCase {
         )
     }
 
+    func testHeightIncludesFeatureContentAndFixedFooter() {
+        let items = [
+            makeItem(controlStyle: .switch, isExpanded: false, secondaryPanel: nil),
+            makeItem(id: "keep-awake", controlStyle: .switch, isExpanded: false, secondaryPanel: nil)
+        ]
+
+        XCTAssertEqual(
+            MenuBarPanelLayout.height(for: items),
+            MenuBarPanelLayout.featureContentHeight(for: items) + MenuBarPanelLayout.fixedFooterHeight
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.availableFeatureHeight(forPanelHeight: MenuBarPanelLayout.height(for: items)),
+            MenuBarPanelLayout.featureContentHeight(for: items)
+        )
+    }
+
+    func testPreferredPanelHeightUsesActualFeatureHeightBelowListMaximum() {
+        let items = [
+            makeItem(controlStyle: .switch, isExpanded: false, secondaryPanel: nil),
+            makeItem(id: "keep-awake", controlStyle: .switch, isExpanded: false, secondaryPanel: nil)
+        ]
+
+        XCTAssertLessThan(
+            MenuBarPanelLayout.featureContentHeight(for: items),
+            MenuBarPanelLayout.featureListMaximumHeight
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.preferredPanelHeight(for: items, screen: nil),
+            MenuBarPanelLayout.featureContentHeight(for: items) + MenuBarPanelLayout.fixedFooterHeight
+        )
+    }
+
+    func testPreferredPanelHeightCapsTallFeatureListsAtListMaximum() {
+        let items = (0..<40).map { index in
+            makeItem(
+                id: "plugin-\(index)",
+                controlStyle: .switch,
+                isExpanded: false,
+                secondaryPanel: nil
+            )
+        }
+
+        XCTAssertEqual(
+            MenuBarPanelLayout.preferredPanelHeight(for: items, screen: nil),
+            MenuBarPanelLayout.featureListMaximumHeight + MenuBarPanelLayout.fixedFooterHeight
+        )
+    }
+
+    func testFeatureListMaximumRespectsVisibleScreenHeight() {
+        let items = (0..<40).map { index in
+            makeItem(
+                id: "plugin-\(index)",
+                controlStyle: .switch,
+                isExpanded: false,
+                secondaryPanel: nil
+            )
+        }
+
+        XCTAssertEqual(
+            MenuBarPanelLayout.featureListHeight(for: items, screen: nil)
+                + MenuBarPanelLayout.fixedFooterHeight,
+            MenuBarPanelLayout.featureListMaximumHeight + MenuBarPanelLayout.fixedFooterHeight
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.maximumFeatureListHeight(visibleFrameHeight: 500)
+                + MenuBarPanelLayout.fixedFooterHeight,
+            375
+        )
+    }
+
+    func testFeaturePanelMaximumUsesThreeQuartersOfVisibleScreenHeight() {
+        XCTAssertEqual(
+            MenuBarPanelLayout.maximumFeatureListHeight(visibleFrameHeight: 1000)
+                + MenuBarPanelLayout.fixedFooterHeight,
+            750
+        )
+    }
+
+    func testComponentPanelMaximumMatchesFeaturePanelScreenRatio() {
+        XCTAssertEqual(
+            MenuBarPanelLayout.maximumPanelHeight(visibleFrameHeight: 1000),
+            750
+        )
+        XCTAssertEqual(
+            MenuBarPanelLayout.maximumPanelHeight(visibleFrameHeight: 500),
+            375
+        )
+    }
+
     func testEmptyContentSizeIncludesMarketplacePrompt() {
         XCTAssertEqual(
             MenuBarPanelLayout.contentSize(for: []),
@@ -124,13 +213,14 @@ final class MenuBarPanelLayoutTests: XCTestCase {
     }
 
     private func makeItem(
+        id: String = "display-resolution",
         controlStyle: PluginControlStyle,
         isExpanded: Bool,
         secondaryPanel: PluginPanelSecondaryPanel?,
         controls: [PluginPanelControl] = []
     ) -> PluginPanelItem {
         PluginPanelItem(
-            id: "display-resolution",
+            id: id,
             title: "显示器分辨率",
             iconName: "display",
             iconTint: Color(nsColor: .systemBlue),

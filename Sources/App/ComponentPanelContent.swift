@@ -19,8 +19,8 @@ enum ComponentPanelLayout {
     static let horizontalPadding = MenuBarPanelLayout.outerPadding
     static let verticalPadding = MenuBarPanelLayout.outerPadding
     static let emptyContentHeight: CGFloat = 164
-    static let maximumPanelHeight: CGFloat = 720
-    static let minimumPanelHeight: CGFloat = 220
+    static let maximumPanelHeight = MenuBarPanelLayout.maximumPanelHeight
+    static let minimumPanelHeight = MenuBarPanelLayout.minimumPanelHeight
 
     static var gridWidth: CGFloat {
         CGFloat(columns) * cellWidth + CGFloat(columns - 1) * horizontalSpacing
@@ -69,10 +69,11 @@ enum ComponentPanelLayout {
         }
 
         let contentHeight = rawContentHeight + contentVerticalPadding
-        let screenMaximum = (screen?.visibleFrame.height ?? maximumPanelHeight) - 48
-        let maximumHeight = max(minimumPanelHeight, min(maximumPanelHeight, screenMaximum))
         let minimumHeight = items.isEmpty ? minimumPanelHeight : contentHeight
-        return min(max(contentHeight, minimumHeight), maximumHeight)
+        return min(
+            max(contentHeight, minimumHeight),
+            MenuBarPanelLayout.maximumPanelHeight(for: screen)
+        )
     }
 }
 
@@ -186,7 +187,7 @@ struct ComponentPanelContent: View {
                 emptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical) {
+                ScrollView(.vertical, showsIndicators: false) {
                     ComponentGridView(
                         pluginHost: pluginHost,
                         items: pluginHost.componentItems,
@@ -195,7 +196,7 @@ struct ComponentPanelContent: View {
                         onDismiss: onDismiss
                     )
                 }
-                .scrollIndicators(.automatic)
+                .background(ScrollViewScrollerVisibilityConfigurator())
             }
         }
         .padding(.horizontal, ComponentPanelLayout.horizontalPadding)

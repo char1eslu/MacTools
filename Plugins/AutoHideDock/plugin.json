@@ -1,0 +1,21 @@
+{
+  "id": "auto-hide-dock",
+  "displayName": "自动隐藏程序坞",
+  "summary": "自动隐藏程序坞，提供更干净的桌面环境",
+  "version": "1.0.6",
+  "minHostVersion": "1.0.2",
+  "pluginKitVersion": 2,
+  "bundleRelativePath": "AutoHideDock.bundle",
+  "factoryClass": "AutoHideDockPlugin.AutoHideDockPluginFactory",
+  "build": {
+    "project": "../../MacTools.xcodeproj",
+    "scheme": "AutoHideDockPlugin"
+  },
+  "capabilities": {
+    "primaryPanel": true,
+    "componentPanel": false,
+    "configuration": false
+  },
+  "permissions": [],
+  "category": "display"
+}

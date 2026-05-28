@@ -1,8 +1,9 @@
 # GitHub Actions 自动构建
 
-本仓库提供四条流水线：
+本仓库提供五条流水线：
 
 - `Build`：在 `main` push、Pull Request 和手动触发时运行。执行 XcodeGen、Debug 测试，并在非 PR 场景额外编译 unsigned Release app 做配置校验；不上传不可分发的未签名产物。
+- `Prepare Release`：在 GitHub Actions 页面手动触发。输入发布类型、目标版本和是否继续发布；它会检查、bump、提交版本变更、创建 tag，并在需要时显式触发 `Release` 或 `Plugin Release`。
 - `Release`：在推送 `v*.*.*` 或 `v*.*.*-*` tag，或手动输入 tag 时运行。构建 Release 版本，使用 Developer ID 签名、公证、打包 DMG，创建或更新 GitHub Release，并提交最新 `docs/appcast.xml`。
 - `Plugin Release`：在推送 `plugins-*` tag，或手动输入插件批次 tag 时运行。默认只构建和上传增量变化插件包，使用 Developer ID 签名插件 bundle，合并并提交签名后的 `docs/plugins/catalog.json`。
 - `Deploy Pages`：仅在 `Release` 或 `Plugin Release` 工作流成功完成后，或手动触发时运行。它把 `main` 分支上的 `docs/` 发布到 GitHub Pages；普通 push / PR 不会触发这条流水线。
@@ -89,7 +90,28 @@ PY
 
 ## App 发布方式
 
-`project.yml` 是发布版本源。发布前先更新：
+推荐用 GitHub Actions 的 `Prepare Release` 触发完整发布准备流程：
+
+1. 打开 `Actions` → `Prepare Release` → `Run workflow`。
+2. `type` 选择 `app`。
+3. `version` 输入目标版本，例如 `1.0.7`，不要带 `v`。
+4. 勾选 `release` 时，准备流程会在创建 `v1.0.7` 后继续触发 `Release` workflow；不勾选时只 bump、提交并打 tag。
+
+本地也可以用 `make release` 执行同样的准备流程：
+
+```bash
+make release
+```
+
+命令会交互选择发布类型、分析当前版本和最新 tag、选择 `patch`/`minor`/`major`，并先展示 bump 预览；确认后才自动 `git pull --rebase`、运行轻量检查、更新版本文件、提交版本 bump、创建并推送 tag。App 发布会推送 `v*.*.*` tag，后续构建、签名、公证、上传 GitHub Release、更新 Sparkle appcast 和 Homebrew tap 仍由 `Release` workflow 完成。
+
+非交互示例：
+
+```bash
+make release ARGS="--type app --version 1.0.7 --yes"
+```
+
+`project.yml` 是发布版本源。若需要手动处理，发布前先更新：
 
 ```yaml
 CURRENT_PROJECT_VERSION: 15
@@ -117,9 +139,35 @@ Release 工作流会校验 `v0.9.3` 与 `project.yml` 的 `MARKETING_VERSION: 0.
 
 ## 插件发布方式
 
+推荐用 GitHub Actions 的 `Prepare Release` 发布插件批次：
+
+1. 打开 `Actions` → `Prepare Release` → `Run workflow`。
+2. `type` 选择 `plugin`。
+3. `version` 输入插件批次版本，例如 `1.0.9`，不要带 `plugins-`。
+4. `plugin_mode` 选择 `auto`、`selected` 或 `all`；`selected` 时在 `plugins` 输入插件 ID 或目录名，多个用逗号分隔。
+5. 勾选 `release` 时，准备流程会在创建 `plugins-1.0.9` 后继续触发 `Plugin Release` workflow；不勾选时只 bump、提交并打 tag。
+
+本地也可以用 `make release` 发布插件批次：
+
+```bash
+make release ARGS="--type plugin"
+```
+
+默认 `auto` 模式会读取生产 `docs/plugins/catalog.json`，找出新插件、已手动 bump 的插件、`pluginKitVersion` 已变化的插件，以及包相关文件变化但版本未递增的插件；对未递增的插件会按选择的 `patch`/`minor`/`major` 自动更新 `plugin.json.version`。随后命令会运行 `make generate` 和增量发布计划检查，提交版本 bump，推送 `plugins-*` 批次 tag。
+
+常用非交互示例：
+
+```bash
+make release ARGS="--type plugin --version 1.0.10 --yes"
+make release ARGS="--type plugin --version 1.0.10 --plugin-mode selected --plugin calendar --yes"
+make release ARGS="--type plugin --version 1.1.0 --plugin-mode all --yes"
+```
+
 插件按批次单独发布，不和 app DMG 混在同一条 Release。默认发布方式是增量发布：只构建和上传本批实际变化的插件包，然后把这些新条目合并进生产 `docs/plugins/catalog.json`。未变化插件会继续保留上一版 catalog 中的 `package.url`、`sha256`、`size` 和 `releaseNotesURL`，所以一个 catalog 可以同时指向多个 `plugins-*` tag。
 
 应用内是否显示“可更新”只比较插件版本，不比较 batch tag 或 asset URL。因此只有实际变化的插件需要递增各自 `plugin.json.version`；未变化插件不会因为新批次 tag 而显示可更新或无效。
+
+`pluginKitVersion` 是插件 ABI 边界。升级 PluginKit 时必须全量重建插件包并递增每个插件自己的 `plugin.json.version`，推荐使用 `plugin_mode=all`。发布脚本会禁止把不同 `pluginKitVersion` 的插件混进同一个生产 catalog，避免新宿主加载旧 ABI 插件导致启动崩溃。
 
 推送插件批次 tag：
 
@@ -132,7 +180,7 @@ git push origin plugins-1.0.1
 
 1. 从 `origin/main` 读取上一版生产 `docs/plugins/catalog.json` 作为基线。
 2. 生成增量发布计划。`auto` 模式会选择新插件和 `plugin.json.version` 高于上一版 catalog 的插件。
-3. 如果插件源码、资源或 `Sources/MacToolsPluginKit` 有包相关变化，但插件版本没有递增，工作流会失败并提示需要 bump 对应 `plugin.json.version`。
+3. 如果插件自身源码、资源或 `pluginKitVersion` 有包相关变化，但插件版本没有递增，工作流会失败并提示需要 bump 对应 `plugin.json.version`。`MacToolsPluginKit` ABI 变化必须使用 `mode=all` 全量重发；展示或宿主侧改动如果也需要重发，可使用 `mode=all` 或传入特定 `--shared-path`。
 4. 只以 Release 配置构建计划中的插件 target。
 5. 用 Developer ID 重新签名这些插件 bundle，并打包为 `*.mactoolsplugin.zip`。
 6. 创建或更新对应的 `plugins-*` GitHub Release，并只上传本批变化插件的 zip。catalog-only 变化可以创建没有 zip asset 的插件 Release。

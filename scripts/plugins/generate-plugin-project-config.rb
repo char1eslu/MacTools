@@ -244,6 +244,51 @@ plugin_roots.each do |plugin_root|
     bundle_sources << normalize_fragment_path(plugin_relative_dir, item, repo_root, output_dir)
   end
 
+  extra_targets = {}
+  extra_bundle_dependencies = []
+  extra_scheme_targets = []
+  generated_post_build_scripts = []
+  Array(fragment.fetch("targets", {})).each do |target_name, target_spec|
+    target_name = target_name.to_s
+    normalized_spec = target_spec.transform_keys(&:to_s)
+    normalized_sources = []
+    Array(normalized_spec["sources"]).each do |item|
+      normalized_sources << normalize_fragment_path(plugin_relative_dir, item, repo_root, output_dir)
+    end
+
+    normalized_settings = normalized_spec["settings"] || {}
+    base_settings = normalized_settings["base"] || {}
+    collect_words(test_include_paths, base_settings["SWIFT_INCLUDE_PATHS"])
+    collect_ldflags(test_ldflags, base_settings["OTHER_LDFLAGS"])
+
+    target_hash = normalized_spec.reject { |key, _| key == "bundleResourcePath" }
+    target_hash["sources"] = normalized_sources unless normalized_sources.empty?
+    target_dependencies = Array(normalized_spec["dependencies"])
+    target_hash["dependencies"] = target_dependencies unless target_dependencies.empty?
+    target_hash["settings"] = normalized_settings unless normalized_settings.empty?
+    extra_targets[target_name] = target_hash
+
+    resource_path = normalized_spec["bundleResourcePath"]
+    next unless resource_path
+
+    extra_bundle_dependencies << { "target" => target_name, "link" => false }
+    extra_scheme_targets << target_name
+    generated_post_build_scripts << {
+      "name" => "Copy #{target_name}",
+      "script" => [
+        "set -euo pipefail",
+        "resource_dir=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/#{resource_path}\"",
+        "mkdir -p \"$resource_dir\"",
+        "ditto \"$BUILT_PRODUCTS_DIR/#{target_name}\" \"$resource_dir/#{target_name}\"",
+        "chmod 755 \"$resource_dir/#{target_name}\""
+      ].join("\n"),
+      "inputFiles" => ["$(BUILT_PRODUCTS_DIR)/#{target_name}"],
+      "outputFiles" => ["$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/#{resource_path}/#{target_name}"]
+    }
+  end
+
+  targets.merge!(extra_targets)
+
   targets[core_target] = {
     "type" => "library.static",
     "platform" => "macOS",
@@ -257,7 +302,9 @@ plugin_roots.each do |plugin_root|
     "settings" => core_settings
   }
 
-  targets[bundle_target] = {
+  bundle_post_build_scripts = Array(fragment.dig("bundle", "postBuildScripts")) + generated_post_build_scripts
+
+  bundle_target_hash = {
     "type" => "bundle",
     "platform" => "macOS",
     "deploymentTarget" => "14.0",
@@ -269,9 +316,11 @@ plugin_roots.each do |plugin_root|
     "dependencies" => [
       { "target" => "MacToolsPluginKit" },
       { "target" => core_target, "link" => true }
-    ] + Array(fragment.dig("bundle", "dependencies")),
+    ] + extra_bundle_dependencies + Array(fragment.dig("bundle", "dependencies")),
     "settings" => bundle_settings
   }
+  bundle_target_hash["postBuildScripts"] = bundle_post_build_scripts unless bundle_post_build_scripts.empty?
+  targets[bundle_target] = bundle_target_hash
 
   plugin_bundle_targets << bundle_target
   plugin_core_targets << core_target
@@ -279,8 +328,10 @@ plugin_roots.each do |plugin_root|
     "build" => {
       "targets" => {
         "MacToolsPluginKit" => "all",
+        core_target => "all",
         bundle_target => "all"
       }
+        .merge(extra_scheme_targets.to_h { |target| [target, "all"] })
     },
     "profile" => { "config" => "Release" },
     "archive" => { "config" => "Release" }

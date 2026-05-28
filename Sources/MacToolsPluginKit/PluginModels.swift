@@ -103,13 +103,16 @@ public struct PluginConfigurationContext {
 
 public struct PluginConfiguration {
     public let description: String?
+    public let prefersFullHeight: Bool
     public let makeView: (PluginConfigurationContext) -> AnyView
 
     public init<Content: View>(
         description: String? = nil,
+        prefersFullHeight: Bool = false,
         @ViewBuilder content: @escaping (PluginConfigurationContext) -> Content
     ) {
         self.description = description
+        self.prefersFullHeight = prefersFullHeight
         self.makeView = { context in
             AnyView(content(context))
         }
@@ -566,6 +569,7 @@ public struct PluginFeatureManagementItem: Identifiable {
     public let isVisible: Bool
     public let isActive: Bool
     public let presentation: PluginFeaturePresentation
+    public let category: String?
 
     public init(
         id: String,
@@ -575,7 +579,8 @@ public struct PluginFeatureManagementItem: Identifiable {
         iconTint: Color,
         isVisible: Bool,
         isActive: Bool,
-        presentation: PluginFeaturePresentation
+        presentation: PluginFeaturePresentation,
+        category: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -585,6 +590,7 @@ public struct PluginFeatureManagementItem: Identifiable {
         self.isVisible = isVisible
         self.isActive = isActive
         self.presentation = presentation
+        self.category = category
     }
 }
 
@@ -599,6 +605,7 @@ public struct PluginConfigurationItem: Identifiable {
     public let permissionCards: [PluginPermissionCard]
     public let shortcutItems: [ShortcutSettingsItem]
     public let hasCustomConfiguration: Bool
+    public let prefersFullHeight: Bool
 
     public init(
         id: String,
@@ -610,7 +617,8 @@ public struct PluginConfigurationItem: Identifiable {
         settingsCards: [PluginSettingsCard],
         permissionCards: [PluginPermissionCard],
         shortcutItems: [ShortcutSettingsItem],
-        hasCustomConfiguration: Bool
+        hasCustomConfiguration: Bool,
+        prefersFullHeight: Bool = false
     ) {
         self.id = id
         self.pluginID = pluginID
@@ -622,6 +630,7 @@ public struct PluginConfigurationItem: Identifiable {
         self.permissionCards = permissionCards
         self.shortcutItems = shortcutItems
         self.hasCustomConfiguration = hasCustomConfiguration
+        self.prefersFullHeight = prefersFullHeight
     }
 }
 
@@ -641,6 +650,8 @@ public struct PluginPermissionCard: Identifiable {
     public let permissionID: String
     public let title: String
     public let description: String
+    public let iconSystemImage: String
+    public let iconVisualScale: CGFloat
     public let statusText: String
     public let statusSystemImage: String
     public let statusTone: PluginStatusTone
@@ -653,6 +664,8 @@ public struct PluginPermissionCard: Identifiable {
         permissionID: String,
         title: String,
         description: String,
+        iconSystemImage: String,
+        iconVisualScale: CGFloat = 1,
         statusText: String,
         statusSystemImage: String,
         statusTone: PluginStatusTone,
@@ -664,6 +677,8 @@ public struct PluginPermissionCard: Identifiable {
         self.permissionID = permissionID
         self.title = title
         self.description = description
+        self.iconSystemImage = iconSystemImage
+        self.iconVisualScale = iconVisualScale
         self.statusText = statusText
         self.statusSystemImage = statusSystemImage
         self.statusTone = statusTone

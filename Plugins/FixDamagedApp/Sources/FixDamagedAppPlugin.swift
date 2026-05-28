@@ -113,7 +113,7 @@ final class FixDamagedAppPlugin: MacToolsPlugin, PluginPrimaryPanel, DropZoneAnc
     // MARK: Configuration
 
     var configuration: PluginConfiguration? {
-        PluginConfiguration(description: "开启后，拖动 .app 文件时会自动弹出修复窗口，无需手动选择文件。") { [weak self] _ in
+        PluginConfiguration(description: metadata.defaultDescription) { [weak self] _ in
             guard let self else { return AnyView(EmptyView()) }
             return AnyView(
                 FixDamagedAppSettingsView(

@@ -44,9 +44,9 @@ final class EjectDiskPluginTests: XCTestCase {
         XCTAssertEqual(plugin.metadata.defaultDescription, "推出所有可移动磁盘")
     }
 
-    func testSubtitleMatchesDefaultDescriptionByDefault() {
+    func testSubtitleShowsNoEjectableDiskWhenCountIsZero() {
         let plugin = EjectDiskPlugin()
 
-        XCTAssertEqual(plugin.primaryPanelState.subtitle, plugin.metadata.defaultDescription)
+        XCTAssertEqual(plugin.primaryPanelState.subtitle, "无可推出的磁盘")
     }
 }

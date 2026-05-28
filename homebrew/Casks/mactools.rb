@@ -1,8 +1,8 @@
 cask "mactools" do
-  version "0.11.0"
-  sha256 "8bbd9bfb67c8b8cb0e8074174803ddb768d031d85acdb6a95079fe2ae4fb339f"
+  version "1.0.13"
+  sha256 "3d030537e6b1cd532376dad15c3e1ec69518465198dab6cc6810efb81cdbf0d6"
 
-  url "https://github.com/ggbond268/MacTools/releases/download/v#{version}/MacTools.dmg"
+  url "https://github.com/ggbond268/MacTools/releases/download/v1.0.13/MacTools.dmg"
   name "MacTools"
   desc "Menu bar toolbox"
   homepage "https://github.com/ggbond268/MacTools"
@@ -13,7 +13,7 @@ cask "mactools" do
   end
 
   auto_updates true
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "MacTools.app"
 end

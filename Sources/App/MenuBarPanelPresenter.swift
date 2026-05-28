@@ -23,6 +23,9 @@ final class MenuBarPanelPresenter: NSObject {
 
     private let pluginHost: PluginHost
     private let onDismiss: () -> Void
+    private let onOpenSettings: () -> Void
+    private let onPresentDiskCleanConfiguration: () -> Void
+    private let onPresentLaunchControlConfiguration: () -> Void
     private let onAllPanelsClosed: () -> Void
 
     private let featurePopover = NSPopover()
@@ -41,11 +44,16 @@ final class MenuBarPanelPresenter: NSObject {
     ) {
         self.pluginHost = pluginHost
         self.onDismiss = onDismiss
+        self.onOpenSettings = onOpenSettings
+        self.onPresentDiskCleanConfiguration = onPresentDiskCleanConfiguration
+        self.onPresentLaunchControlConfiguration = onPresentLaunchControlConfiguration
         self.onAllPanelsClosed = onAllPanelsClosed
 
         self.featureHostingController = NSHostingController(
             rootView: MenuBarContent(
                 pluginHost: pluginHost,
+                maximumFeatureListHeight: MenuBarPanelLayout.maximumFeatureListHeight(for: nil),
+                onPreferredHeightChange: { _ in },
                 onDismiss: onDismiss,
                 onOpenSettings: onOpenSettings,
                 onPresentDiskCleanConfiguration: onPresentDiskCleanConfiguration,
@@ -90,7 +98,30 @@ final class MenuBarPanelPresenter: NSObject {
 
         componentPopover.performClose(nil)
         pluginHost.refreshAll()
-        featurePopover.contentSize = MenuBarPanelLayout.contentSize(for: pluginHost.panelItems)
+        let screen = button.window?.screen ?? NSScreen.main
+        let maximumFeatureListHeight = MenuBarPanelLayout.maximumFeatureListHeight(
+            for: screen
+        )
+        let initialPanelHeight = MenuBarPanelLayout.preferredPanelHeight(
+            for: pluginHost.panelItems,
+            screen: screen
+        )
+        featurePopover.contentSize = NSSize(
+            width: MenuBarPanelLayout.width(for: pluginHost.panelItems),
+            height: initialPanelHeight
+        )
+        featureHostingController.rootView = MenuBarContent(
+            pluginHost: pluginHost,
+            maximumFeatureListHeight: maximumFeatureListHeight,
+            onPreferredHeightChange: { [weak self] preferredHeight in
+                self?.setFeaturePopoverHeight(preferredHeight)
+            },
+            onDismiss: onDismiss,
+            onOpenSettings: onOpenSettings,
+            onPresentDiskCleanConfiguration: onPresentDiskCleanConfiguration,
+            onPresentLaunchControlConfiguration: onPresentLaunchControlConfiguration
+        )
+        applyCurrentAppearance()
         show(featurePopover, relativeTo: button)
     }
 
@@ -144,7 +175,13 @@ final class MenuBarPanelPresenter: NSObject {
     }
 
     private func prewarm() {
-        featurePopover.contentSize = MenuBarPanelLayout.contentSize(for: pluginHost.panelItems)
+        featurePopover.contentSize = NSSize(
+            width: MenuBarPanelLayout.width(for: pluginHost.panelItems),
+            height: MenuBarPanelLayout.preferredPanelHeight(
+                for: pluginHost.panelItems,
+                screen: NSScreen.main
+            )
+        )
         componentPopover.contentSize = NSSize(
             width: ComponentPanelLayout.panelWidth,
             height: ComponentPanelLayout.preferredPanelHeight(
@@ -193,6 +230,19 @@ final class MenuBarPanelPresenter: NSObject {
         preference.apply(to: componentHostingController.view)
         preference.apply(to: featurePopover)
         preference.apply(to: componentPopover)
+    }
+
+    private func setFeaturePopoverHeight(_ height: CGFloat) {
+        let width = MenuBarPanelLayout.width(for: pluginHost.panelItems)
+        let currentSize = featurePopover.contentSize
+        guard
+            abs(currentSize.width - width) > 0.5
+                || abs(currentSize.height - height) > 0.5
+        else {
+            return
+        }
+
+        featurePopover.contentSize = NSSize(width: width, height: height)
     }
 }
 

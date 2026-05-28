@@ -14,6 +14,19 @@ final class PluginHost: ObservableObject {
     private struct PluginDescriptor {
         let metadata: PluginMetadata
         let plugin: any MacToolsPlugin
+        let capabilities: PluginPackageManifest.Capabilities?
+
+        var hasPrimaryPanel: Bool {
+            capabilities?.primaryPanel ?? true
+        }
+
+        var hasComponentPanel: Bool {
+            capabilities?.componentPanel ?? true
+        }
+
+        var hasConfiguration: Bool {
+            capabilities?.configuration ?? true
+        }
     }
 
     private struct ShortcutDescriptor {
@@ -35,6 +48,8 @@ final class PluginHost: ObservableObject {
     private let pluginCatalogManager: PluginCatalogManager?
 
     private var dynamicPlugins: [any MacToolsPlugin] = []
+    private var dynamicPluginCapabilitiesByID: [String: PluginPackageManifest.Capabilities] = [:]
+    private var dynamicPluginCategoriesByID: [String: String?] = [:]
     private var shortcutErrors: [String: String] = [:]
     private var componentViewCache: [String: PluginComponentViewItem] = [:]
     private var configurationViewCache: [String: PluginConfigurationViewItem] = [:]
@@ -105,6 +120,8 @@ final class PluginHost: ObservableObject {
 
         if let dynamicPluginManager {
             self.dynamicPlugins = dynamicPluginManager.loadInstalledPlugins()
+            self.dynamicPluginCapabilitiesByID = dynamicPluginManager.installedCapabilitiesByID()
+            self.dynamicPluginCategoriesByID = dynamicPluginManager.installedCategoriesByID()
             self.pluginManagementItems = dynamicPluginManager.pluginManagementItems
             self.pluginCatalogStatus = pluginCatalogManager?.status ?? .unavailable
             configureCallbacks(for: self.dynamicPlugins)
@@ -519,18 +536,18 @@ final class PluginHost: ObservableObject {
             return cachedItem
         }
 
-        let configurations = orderedCorePlugins()
-            .filter { $0.metadata.id == pluginID }
-            .compactMap { plugin -> (any MacToolsPlugin, PluginConfiguration)? in
+        let configurations = orderedPluginDescriptors()
+            .filter { $0.metadata.id == pluginID && $0.hasConfiguration }
+            .compactMap { descriptor -> (any MacToolsPlugin, PluginConfiguration)? in
                 guard let configuration = guardedOptionalValue(
-                    for: plugin,
+                    for: descriptor.plugin,
                     operation: "read plugin configuration",
-                    plugin.configuration
+                    descriptor.plugin.configuration
                 ) else {
                     return nil
                 }
 
-                return (plugin, configuration)
+                return (descriptor.plugin, configuration)
             }
 
         guard corePlugin(for: pluginID) != nil else {
@@ -706,15 +723,22 @@ final class PluginHost: ObservableObject {
     }
 
     private func syncPluginManagementState() {
+        dynamicPluginCapabilitiesByID = dynamicPluginManager?.installedCapabilitiesByID() ?? [:]
+        dynamicPluginCategoriesByID = dynamicPluginManager?.installedCategoriesByID() ?? [:]
         pluginManagementItems = dynamicPluginManager?.pluginManagementItems ?? []
         pluginCatalogStatus = pluginCatalogManager?.status ?? .unavailable
     }
 
     private func rebuildDerivedState() {
         let isolatedPluginCountAtStart = isolatedPluginFailures.count
-        let orderedPlugins = orderedPlugins()
+        let orderedDescriptors = orderedPluginDescriptors()
         let panelStatesByID = Dictionary(
-            uniqueKeysWithValues: orderedPlugins.compactMap { plugin -> (String, PluginPanelState)? in
+            uniqueKeysWithValues: orderedDescriptors.compactMap { descriptor -> (String, PluginPanelState)? in
+                guard descriptor.hasPrimaryPanel else {
+                    return nil
+                }
+
+                let plugin = descriptor.plugin
                 guard !isPluginIsolated(plugin) else {
                     return nil
                 }
@@ -735,7 +759,12 @@ final class PluginHost: ObservableObject {
             }
         )
         let componentStatesByID = Dictionary(
-            uniqueKeysWithValues: orderedPlugins.compactMap { plugin -> (String, PluginComponentState)? in
+            uniqueKeysWithValues: orderedDescriptors.compactMap { descriptor -> (String, PluginComponentState)? in
+                guard descriptor.hasComponentPanel else {
+                    return nil
+                }
+
+                let plugin = descriptor.plugin
                 guard !isPluginIsolated(plugin) else {
                     return nil
                 }
@@ -755,9 +784,13 @@ final class PluginHost: ObservableObject {
                 return (plugin.metadata.id, state)
             }
         )
-        let orderedDescriptors = orderedPluginDescriptors()
 
-        panelItems = orderedPlugins.compactMap { plugin in
+        panelItems = orderedDescriptors.compactMap { descriptor in
+            guard descriptor.hasPrimaryPanel else {
+                return nil
+            }
+
+            let plugin = descriptor.plugin
             let metadata = plugin.metadata
             guard
                 let primaryPanel = plugin.primaryPanel,
@@ -798,7 +831,12 @@ final class PluginHost: ObservableObject {
             )
         }
 
-        componentItems = orderedPlugins.compactMap { plugin in
+        componentItems = orderedDescriptors.compactMap { descriptor in
+            guard descriptor.hasComponentPanel else {
+                return nil
+            }
+
+            let plugin = descriptor.plugin
             let metadata = plugin.metadata
             guard
                 let componentPanel = plugin.componentPanel,
@@ -849,7 +887,8 @@ final class PluginHost: ObservableObject {
                 ),
                 isActive: panelStatesByID[metadata.id]?.isOn == true
                     || componentStatesByID[metadata.id]?.isActive == true,
-                presentation: presentation(for: descriptor.plugin)
+                presentation: presentation(for: descriptor),
+                category: dynamicPluginCategoriesByID[metadata.id] ?? nil
             )
         }
 
@@ -898,6 +937,7 @@ final class PluginHost: ObservableObject {
                     permissionID: requirement.id,
                     title: requirement.title,
                     description: requirement.description,
+                    iconSystemImage: permissionIconName(for: requirement.kind),
                     statusText: state.statusText ?? (state.isGranted ? "已授权" : "未授权"),
                     statusSystemImage: state.statusSystemImage ?? (state.isGranted ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"),
                     statusTone: state.statusTone ?? (state.isGranted ? .positive : .caution),
@@ -1130,13 +1170,17 @@ final class PluginHost: ObservableObject {
             let matchingSettingsCards = settingsCards.filter { $0.pluginID == pluginID }
             let matchingPermissionCards = permissionCards.filter { $0.pluginID == pluginID }
             let matchingShortcutItems = shortcutItems.filter { $0.pluginID == pluginID }
-            let configurations = [
-                guardedOptionalValue(
+            let configurations: [PluginConfiguration]
+            if descriptor.hasConfiguration,
+               let configuration = guardedOptionalValue(
                     for: descriptor.plugin,
                     operation: "read plugin configuration",
                     descriptor.plugin.configuration
-                )
-            ].compactMap { $0 }
+               ) {
+                configurations = [configuration]
+            } else {
+                configurations = []
+            }
             let hasConfigurationSurface = !matchingSettingsCards.isEmpty
                 || !matchingPermissionCards.isEmpty
                 || !matchingShortcutItems.isEmpty
@@ -1156,7 +1200,8 @@ final class PluginHost: ObservableObject {
                 settingsCards: matchingSettingsCards,
                 permissionCards: matchingPermissionCards,
                 shortcutItems: matchingShortcutItems,
-                hasCustomConfiguration: !configurations.isEmpty
+                hasCustomConfiguration: !configurations.isEmpty,
+                prefersFullHeight: configurations.first?.prefersFullHeight ?? false
             )
         }
     }
@@ -1229,8 +1274,18 @@ final class PluginHost: ObservableObject {
     }
 
     private func defaultPluginDescriptors() -> [PluginDescriptor] {
-        activePlugins
-            .map { PluginDescriptor(metadata: $0.metadata, plugin: $0) }
+        let descriptors = builtInPlugins
+            .map { PluginDescriptor(metadata: $0.metadata, plugin: $0, capabilities: nil) }
+            + dynamicPlugins.map {
+                PluginDescriptor(
+                    metadata: $0.metadata,
+                    plugin: $0,
+                    capabilities: dynamicPluginCapabilitiesByID[$0.metadata.id]
+                )
+            }
+
+        return descriptors
+            .filter { !isPluginIsolated($0.plugin) }
             .sorted { lhs, rhs in
                 if lhs.metadata.order == rhs.metadata.order {
                     return lhs.metadata.title.localizedCompare(rhs.metadata.title) == .orderedAscending
@@ -1240,7 +1295,21 @@ final class PluginHost: ObservableObject {
             }
     }
 
-    private func presentation(for plugin: any MacToolsPlugin) -> PluginFeaturePresentation {
+    private func presentation(for descriptor: PluginDescriptor) -> PluginFeaturePresentation {
+        if let capabilities = descriptor.capabilities {
+            switch (capabilities.primaryPanel, capabilities.componentPanel) {
+            case (true, true):
+                return .featureAndComponentPanel
+            case (true, false):
+                return .featurePanel
+            case (false, true):
+                return .componentPanel
+            case (false, false):
+                return .featurePanel
+            }
+        }
+
+        let plugin = descriptor.plugin
         switch (plugin.primaryPanel, plugin.componentPanel) {
         case (.some, .some):
             return .featureAndComponentPanel
@@ -1407,6 +1476,17 @@ final class PluginHost: ObservableObject {
             return isGranted ? "检查授权状态" : "请求授权"
         case .automation:
             return "打开设置"
+        }
+    }
+
+    private func permissionIconName(for kind: PluginPermissionKind) -> String {
+        switch kind {
+        case .accessibility:
+            return "accessibility"
+        case .calendarFullAccess:
+            return "calendar"
+        case .automation:
+            return "cursorarrow.click.2"
         }
     }
 }

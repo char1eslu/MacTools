@@ -5,27 +5,38 @@ struct MiddleClickSettingsView: View {
     let selectedCount: Int
     let onCountChange: (Int) -> Void
 
+    private enum Icon {
+        static let title = "hand.tap"
+        static let fingerCount = "hand.raised"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.section) {
+        VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.sectionHeaderContent) {
             Label("设置", systemImage: "gearshape")
                 .font(PluginSettingsTheme.Typography.sectionTitle)
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("手指数量", systemImage: "hand.tap")
-                        .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
-                    
+            VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.rowContentControl) {
+                VStack(alignment: .leading, spacing: PluginSettingsTheme.Spacing.rowTitleDescription) {
+                    HStack(spacing: PluginSettingsTheme.Spacing.controlCluster) {
+                        Image(systemName: Icon.title)
+                            .pluginSettingsRowIconStyle()
+
+                        Text("手指数量")
+                            .font(PluginSettingsTheme.Typography.emphasizedRowTitle)
+                    }
+
                     Text("用指定数量的手指在触控板上轻点，将模拟鼠标中键点击")
                         .font(PluginSettingsTheme.Typography.rowDescription)
                         .foregroundStyle(.secondary)
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: PluginSettingsTheme.Spacing.controlCluster) {
                     ForEach([3, 4, 5], id: \.self) { count in
                         FingerCountButton(
                             count: count,
                             isSelected: selectedCount == count,
+                            iconSystemName: Icon.fingerCount,
                             action: {
                                 onCountChange(count)
                             }
@@ -43,42 +54,39 @@ struct MiddleClickSettingsView: View {
 private struct FingerCountButton: View {
     let count: Int
     let isSelected: Bool
+    let iconSystemName: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: "hand.raised")
-                    .font(.system(size: 16, weight: .medium))
+            VStack(spacing: PluginSettingsTheme.Spacing.controlCluster) {
+                Image(systemName: iconSystemName)
+                    .pluginSettingsRowIconStyle(isSelected ? Color.accentColor : Color.primary)
 
                 Text("\(count)指")
                     .font(PluginSettingsTheme.Typography.secondaryLabel.weight(.semibold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 60)
-            .foregroundStyle(
-                isSelected
-                    ? Color(nsColor: .systemBlue)
-                    : Color(nsColor: .labelColor)
-            )
+            .frame(height: PluginSettingsTheme.Size.controlHeight * 2)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PluginSettingsTheme.Radius.control, style: .continuous)
                 .fill(
                     isSelected
-                        ? Color(nsColor: .systemBlue).opacity(0.1)
-                        : Color(nsColor: .secondaryLabelColor).opacity(0.08)
+                        ? PluginSettingsTheme.Palette.activeControlBackground
+                        : PluginSettingsTheme.Palette.recessedControlBackground
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PluginSettingsTheme.Radius.control, style: .continuous)
                 .strokeBorder(
                     isSelected
-                        ? Color(nsColor: .systemBlue).opacity(0.4)
+                        ? Color.accentColor.opacity(0.35)
                         : Color.clear,
-                    lineWidth: 1.5
+                    lineWidth: PluginSettingsTheme.Stroke.standard
                 )
         )
     }

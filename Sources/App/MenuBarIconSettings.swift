@@ -106,34 +106,6 @@ enum MenuBarIconMediaKind: String, Codable, Equatable {
     case animation
 }
 
-enum MenuBarIconBuiltInAnimationGroup: String, CaseIterable, Identifiable {
-    case featured
-    case animals
-    case motion
-    case objects
-    case scenes
-    case symbols
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .featured:
-            return "精选"
-        case .animals:
-            return "动物"
-        case .motion:
-            return "运动"
-        case .objects:
-            return "物件"
-        case .scenes:
-            return "场景"
-        case .symbols:
-            return "图形"
-        }
-    }
-}
-
 struct MenuBarIconRecentItem: Identifiable, Codable, Equatable {
     let id: UUID
     var fileName: String
@@ -142,6 +114,7 @@ struct MenuBarIconRecentItem: Identifiable, Codable, Equatable {
     var addedAt: Date
     var mediaKind: MenuBarIconMediaKind
     var frameDuration: TimeInterval
+    var thumbnailFileName: String?
 
     init(
         id: UUID,
@@ -150,7 +123,8 @@ struct MenuBarIconRecentItem: Identifiable, Codable, Equatable {
         displayName: String,
         addedAt: Date,
         mediaKind: MenuBarIconMediaKind,
-        frameDuration: TimeInterval
+        frameDuration: TimeInterval,
+        thumbnailFileName: String? = nil
     ) {
         self.id = id
         self.fileName = fileName
@@ -159,6 +133,7 @@ struct MenuBarIconRecentItem: Identifiable, Codable, Equatable {
         self.addedAt = addedAt
         self.mediaKind = mediaKind
         self.frameDuration = frameDuration
+        self.thumbnailFileName = thumbnailFileName
     }
 
     init(from decoder: Decoder) throws {
@@ -170,176 +145,7 @@ struct MenuBarIconRecentItem: Identifiable, Codable, Equatable {
         addedAt = try container.decode(Date.self, forKey: .addedAt)
         mediaKind = try container.decodeIfPresent(MenuBarIconMediaKind.self, forKey: .mediaKind) ?? .image
         frameDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .frameDuration) ?? 1.0 / 6.0
-    }
-}
-
-struct MenuBarIconBuiltInAnimation: Identifiable, Equatable {
-    let id: String
-    let displayName: String
-    let group: MenuBarIconBuiltInAnimationGroup
-    let frameResourceNames: [String]
-    let frameResourceExtension: String
-    let resourceSubdirectory: String
-    let frameDuration: TimeInterval
-
-    private static func numberedFrameResourceNames(prefix: String, count: Int) -> [String] {
-        (1...count).map { index in
-            String(format: "%@%03d", prefix, index)
-        }
-    }
-
-    private static func zeroBasedFrameResourceNames(prefix: String, count: Int) -> [String] {
-        (0..<count).map { index in
-            String(format: "%@-frame-%03d", prefix, index)
-        }
-    }
-
-    private static func runCatAssetAnimations() -> [MenuBarIconBuiltInAnimation] {
-        let assets: [(id: String, displayName: String, group: MenuBarIconBuiltInAnimationGroup, frameCount: Int)] = [
-            (id: "all-runners", displayName: "全员奔跑", group: .motion, frameCount: 5),
-            (id: "bird", displayName: "小鸟", group: .animals, frameCount: 5),
-            (id: "bonfire", displayName: "篝火", group: .scenes, frameCount: 5),
-            (id: "butterfly", displayName: "蝴蝶", group: .animals, frameCount: 5),
-            (id: "cat-b", displayName: "RunCat 猫 B", group: .animals, frameCount: 5),
-            (id: "cat-c", displayName: "RunCat 猫 C", group: .animals, frameCount: 5),
-            (id: "cat-tail", displayName: "猫尾巴", group: .animals, frameCount: 5),
-            (id: "chameleon", displayName: "变色龙", group: .animals, frameCount: 5),
-            (id: "cheetah", displayName: "猎豹", group: .animals, frameCount: 5),
-            (id: "chicken", displayName: "小鸡", group: .animals, frameCount: 5),
-            (id: "city", displayName: "城市", group: .scenes, frameCount: 10),
-            (id: "coffee", displayName: "咖啡", group: .objects, frameCount: 10),
-            (id: "cogwheel", displayName: "齿轮", group: .objects, frameCount: 5),
-            (id: "cradle", displayName: "摇篮", group: .objects, frameCount: 5),
-            (id: "dinosaur", displayName: "恐龙", group: .animals, frameCount: 7),
-            (id: "dog", displayName: "小狗", group: .animals, frameCount: 5),
-            (id: "dogeza", displayName: "伏地", group: .motion, frameCount: 8),
-            (id: "dolphin", displayName: "海豚", group: .animals, frameCount: 5),
-            (id: "dots", displayName: "圆点", group: .symbols, frameCount: 10),
-            (id: "dragon", displayName: "龙", group: .animals, frameCount: 5),
-            (id: "drop", displayName: "水滴", group: .symbols, frameCount: 5),
-            (id: "earth", displayName: "地球", group: .scenes, frameCount: 15),
-            (id: "engine", displayName: "发动机", group: .objects, frameCount: 10),
-            (id: "entaku", displayName: "圆桌", group: .objects, frameCount: 9),
-            (id: "factory", displayName: "工厂", group: .scenes, frameCount: 16),
-            (id: "fishman", displayName: "鱼人", group: .animals, frameCount: 5),
-            (id: "flash-cat", displayName: "闪电猫", group: .featured, frameCount: 5),
-            (id: "fox", displayName: "狐狸", group: .animals, frameCount: 5),
-            (id: "frog", displayName: "青蛙", group: .animals, frameCount: 5),
-            (id: "frypan", displayName: "煎锅", group: .objects, frameCount: 5),
-            (id: "ghost", displayName: "幽灵", group: .symbols, frameCount: 5),
-            (id: "golden-cat", displayName: "金猫", group: .featured, frameCount: 10),
-            (id: "greyhound", displayName: "灵缇", group: .animals, frameCount: 14),
-            (id: "hamster-wheel", displayName: "转轮", group: .motion, frameCount: 5),
-            (id: "hedgehog", displayName: "刺猬", group: .animals, frameCount: 5),
-            (id: "horse", displayName: "马", group: .animals, frameCount: 5),
-            (id: "human", displayName: "跑步人", group: .motion, frameCount: 5),
-            (id: "jack-o-lantern", displayName: "南瓜灯", group: .objects, frameCount: 5),
-            (id: "maneki-neko", displayName: "招财猫", group: .featured, frameCount: 15),
-            (id: "metal-cluster-cat", displayName: "金属猫", group: .featured, frameCount: 10),
-            (id: "mochi", displayName: "麻薯", group: .objects, frameCount: 5),
-            (id: "mock-nyan-cat", displayName: "彩虹猫", group: .featured, frameCount: 5),
-            (id: "mouse", displayName: "小鼠", group: .animals, frameCount: 5),
-            (id: "octopus", displayName: "章鱼", group: .animals, frameCount: 5),
-            (id: "otter", displayName: "水獭", group: .animals, frameCount: 8),
-            (id: "owl", displayName: "猫头鹰", group: .animals, frameCount: 5),
-            (id: "parrot", displayName: "鹦鹉", group: .animals, frameCount: 10),
-            (id: "party-people", displayName: "派对人群", group: .motion, frameCount: 14),
-            (id: "pendulum", displayName: "钟摆", group: .objects, frameCount: 5),
-            (id: "penguin", displayName: "企鹅", group: .animals, frameCount: 5),
-            (id: "penguin2", displayName: "企鹅 2", group: .animals, frameCount: 5),
-            (id: "pig", displayName: "小猪", group: .animals, frameCount: 5),
-            (id: "pulse", displayName: "脉冲", group: .symbols, frameCount: 5),
-            (id: "puppy", displayName: "幼犬", group: .animals, frameCount: 5),
-            (id: "push-up", displayName: "俯卧撑", group: .motion, frameCount: 5),
-            (id: "rabbit", displayName: "兔子", group: .animals, frameCount: 5),
-            (id: "reactor", displayName: "反应堆", group: .objects, frameCount: 5),
-            (id: "reindeer-sleigh", displayName: "雪橇", group: .scenes, frameCount: 5),
-            (id: "rocket", displayName: "火箭", group: .objects, frameCount: 5),
-            (id: "rotating-sushi", displayName: "旋转寿司", group: .objects, frameCount: 6),
-            (id: "rubber-duck", displayName: "小黄鸭", group: .objects, frameCount: 5),
-            (id: "sausage", displayName: "香肠", group: .objects, frameCount: 5),
-            (id: "self-made", displayName: "自制", group: .symbols, frameCount: 5),
-            (id: "sheep", displayName: "绵羊", group: .animals, frameCount: 5),
-            (id: "sine-curve", displayName: "正弦曲线", group: .symbols, frameCount: 5),
-            (id: "sit-up", displayName: "仰卧起坐", group: .motion, frameCount: 5),
-            (id: "slime", displayName: "史莱姆", group: .symbols, frameCount: 5),
-            (id: "snowman", displayName: "雪人", group: .scenes, frameCount: 5),
-            (id: "sparkler", displayName: "烟花棒", group: .objects, frameCount: 5),
-            (id: "squirrel", displayName: "松鼠", group: .animals, frameCount: 5),
-            (id: "steam-locomotive", displayName: "蒸汽火车", group: .objects, frameCount: 10),
-            (id: "sushi", displayName: "寿司", group: .objects, frameCount: 16),
-            (id: "tapioca-drink", displayName: "珍珠奶茶", group: .objects, frameCount: 5),
-            (id: "terrier", displayName: "梗犬", group: .animals, frameCount: 5),
-            (id: "triforce", displayName: "三角徽记", group: .symbols, frameCount: 9),
-            (id: "uhooi", displayName: "Uhooi", group: .symbols, frameCount: 10),
-            (id: "welsh-corgi", displayName: "柯基", group: .animals, frameCount: 7),
-            (id: "whale", displayName: "鲸鱼", group: .animals, frameCount: 5),
-            (id: "wind-chime", displayName: "风铃", group: .objects, frameCount: 5)
-        ]
-
-        return assets.map { asset in
-            MenuBarIconBuiltInAnimation(
-                id: "runcat-\(asset.id)",
-                displayName: asset.displayName,
-                group: asset.group,
-                frameResourceNames: Self.zeroBasedFrameResourceNames(prefix: asset.id, count: asset.frameCount),
-                frameResourceExtension: "png",
-                resourceSubdirectory: "BuiltinMenuBarAnimations/RunCatAssets/\(asset.id)",
-                frameDuration: 0.1
-            )
-        }
-    }
-
-    static let all: [MenuBarIconBuiltInAnimation] = [
-        MenuBarIconBuiltInAnimation(
-            id: "running-left",
-            displayName: "奔跑狗狗",
-            group: .featured,
-            frameResourceNames: Self.numberedFrameResourceNames(prefix: "runningLeft", count: 52),
-            frameResourceExtension: "png",
-            resourceSubdirectory: "BuiltinMenuBarAnimations/RunningLeft",
-            frameDuration: 1.0 / 24.0
-        ),
-        MenuBarIconBuiltInAnimation(
-            id: "runcat",
-            displayName: "RunCat",
-            group: .featured,
-            frameResourceNames: ["cat0", "cat1", "cat2", "cat3", "cat4"],
-            frameResourceExtension: "png",
-            resourceSubdirectory: "BuiltinMenuBarAnimations/RunCat",
-            frameDuration: 0.1
-        )
-    ] + Self.runCatAssetAnimations()
-
-    func loadFrames(bundle: Bundle = .main) -> [NSImage] {
-        frameResourceNames.compactMap { resourceName in
-            loadFrame(resourceName: resourceName, bundle: bundle)
-        }
-    }
-
-    func loadFirstFrame(bundle: Bundle = .main) -> NSImage? {
-        guard let resourceName = frameResourceNames.first else {
-            return nil
-        }
-
-        return loadFrame(resourceName: resourceName, bundle: bundle)
-    }
-
-    private func loadFrame(resourceName: String, bundle: Bundle) -> NSImage? {
-        let url = bundle.url(
-            forResource: resourceName,
-            withExtension: frameResourceExtension,
-            subdirectory: resourceSubdirectory
-        ) ?? bundle.url(
-            forResource: resourceName,
-            withExtension: frameResourceExtension
-        )
-
-        guard let url else {
-            return nil
-        }
-
-        return NSImage(contentsOf: url)
+        thumbnailFileName = try container.decodeIfPresent(String.self, forKey: .thumbnailFileName)
     }
 }
 
@@ -723,6 +529,7 @@ final class MenuBarIconSettings: ObservableObject {
         var backgroundRemovalOptions: MenuBarIconBackgroundRemovalOptions = .default
         var lightIconFileName: String?
         var darkIconFileName: String?
+        var remoteAssetSelection: MenuBarIconRemoteAssetSelection?
         var lightAdjustment: MenuBarIconAdjustment = .default
         var darkAdjustment: MenuBarIconAdjustment = .default
         var recentItems: [MenuBarIconRecentItem] = []
@@ -739,6 +546,12 @@ final class MenuBarIconSettings: ObservableObject {
         let fileName: String
     }
 
+    private struct RemoteFramesCacheKey: Hashable {
+        let id: String
+        let version: String
+        let frameFileNames: [String]
+    }
+
     private static let defaultIconName = NSImage.Name("MenuBarIcon")
     private static let iconPointSize = NSSize(width: 18, height: 18)
     private static let maxRecentItems = 6
@@ -750,27 +563,37 @@ final class MenuBarIconSettings: ObservableObject {
     private let userDefaults: UserDefaults
     private let fileManager: FileManager
     private let rootDirectory: URL
+    private let remoteAssetStore: MenuBarIconRemoteAssetStore
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var imagePayloadCache: [MenuBarIconAppearance: MenuBarIconImagePayload] = [:]
     private var renderedFramesCache: [RenderedFramesCacheKey: [NSImage]] = [:]
+    private var remoteFramesCache: [RemoteFramesCacheKey: [NSImage]] = [:]
     private var recentPreviewCache: [RecentPreviewCacheKey: NSImage] = [:]
     private var contrastReportCache: [MenuBarIconAppearance: MenuBarIconContrastReport] = [:]
 
     init(
         userDefaults: UserDefaults = .standard,
         fileManager: FileManager = .default,
-        rootDirectory: URL? = nil
+        rootDirectory: URL? = nil,
+        remoteAssetStore: MenuBarIconRemoteAssetStore? = nil
     ) {
         self.userDefaults = userDefaults
         self.fileManager = fileManager
         self.rootDirectory = rootDirectory ?? Self.defaultRootDirectory(fileManager: fileManager)
+        self.remoteAssetStore = remoteAssetStore ?? MenuBarIconRemoteAssetStore(
+            rootDirectory: self.rootDirectory
+                .appendingPathComponent("MenuBarIcons", isDirectory: true)
+                .appendingPathComponent("RemoteAssets", isDirectory: true),
+            fileManager: fileManager
+        )
         self.storedState = Self.loadState(userDefaults: userDefaults)
         self.storedState.lightAdjustment = .default
         self.storedState.darkAdjustment = .default
         self.storedState.backgroundRemovalOptions = .default
         self.storedState.renderMode = .original
         pruneMissingRecentItems()
+        pruneMissingRemoteAssetSelection()
     }
 
     var renderMode: MenuBarIconRenderMode {
@@ -788,10 +611,6 @@ final class MenuBarIconSettings: ObservableObject {
 
     var recentItems: [MenuBarIconRecentItem] {
         storedState.recentItems
-    }
-
-    var builtInAnimations: [MenuBarIconBuiltInAnimation] {
-        MenuBarIconBuiltInAnimation.all
     }
 
     var animationSpeedMode: MenuBarIconAnimationSpeedMode {
@@ -822,7 +641,25 @@ final class MenuBarIconSettings: ObservableObject {
     }
 
     var hasCustomIcon: Bool {
-        storedState.lightIconFileName != nil || storedState.darkIconFileName != nil
+        storedState.lightIconFileName != nil
+            || storedState.darkIconFileName != nil
+            || storedState.remoteAssetSelection != nil
+    }
+
+    var selectedRemoteAsset: MenuBarIconRemoteAssetSelection? {
+        storedState.remoteAssetSelection
+    }
+
+    func remoteAssetSelection(forRecentItem item: MenuBarIconRecentItem) -> MenuBarIconRemoteAssetSelection? {
+        remoteAssetSelection(for: item)
+    }
+
+    func isRemoteAssetCached(for item: MenuBarIconRecentItem) -> Bool {
+        guard let selection = remoteAssetSelection(for: item) else {
+            return false
+        }
+
+        return remoteAssetStore.hasFrames(for: selection)
     }
 
     func importIcon(from sourceURL: URL, for _: MenuBarIconAppearance) {
@@ -861,6 +698,8 @@ final class MenuBarIconSettings: ObservableObject {
         )
 
         storeRecentItem(recentItem)
+        clearRemoteAssetSelection()
+        pruneUnusedRecentFiles()
         setIconFileNameForAllAppearances(recentFileName)
         resetAdjustmentsForAllAppearances()
         invalidateAllIconCaches()
@@ -914,49 +753,30 @@ final class MenuBarIconSettings: ObservableObject {
         )
 
         storeRecentItem(recentItem)
+        clearRemoteAssetSelection()
+        pruneUnusedRecentFiles()
         setIconFileNameForAllAppearances(recentItem.fileName)
         resetAdjustmentsForAllAppearances()
         invalidateAllIconCaches()
         persist()
     }
 
-    func useBuiltInAnimation(_ animation: MenuBarIconBuiltInAnimation, for _: MenuBarIconAppearance) {
-        useBuiltInAnimation(animation)
-    }
-
-    func useBuiltInAnimation(_ animation: MenuBarIconBuiltInAnimation) {
+    func useRemoteAsset(_ selection: MenuBarIconRemoteAssetSelection) {
         clearError()
 
-        let sourceFrames = animation.loadFrames()
-        guard sourceFrames.count > 1 else {
-            lastErrorMessage = "无法读取内置动画素材。"
+        guard remoteAssetStore.hasFrames(for: selection) else {
+            lastErrorMessage = "在线图标文件尚未下载完成。"
             return
         }
 
-        let animationID = "builtin-\(animation.id)-\(UUID().uuidString)"
-        let fileNames = sourceFrames.indices.map { index in
-            "\(animationID)-frame-\(index).png"
-        }
-
-        guard saveAnimationFrames(sourceFrames, fileNames: fileNames) else {
-            lastErrorMessage = "无法保存内置动画。"
-            return
-        }
-
-        let recentItem = MenuBarIconRecentItem(
-            id: UUID(),
-            fileName: fileNames[0],
-            frameFileNames: fileNames,
-            displayName: animation.displayName,
-            addedAt: Date(),
-            mediaKind: .animation,
-            frameDuration: animation.frameDuration
-        )
-
-        storeRecentItem(recentItem)
-        setIconFileNameForAllAppearances(recentItem.fileName)
+        storedState.remoteAssetSelection = selection
+        storedState.lightIconFileName = nil
+        storedState.darkIconFileName = nil
+        storeRemoteRecentItem(selection)
+        pruneUnusedRecentFiles()
         resetAdjustmentsForAllAppearances()
         invalidateAllIconCaches()
+        remoteAssetStore.pruneRemoteAssets(keeping: selection)
         persist()
     }
 
@@ -965,6 +785,27 @@ final class MenuBarIconSettings: ObservableObject {
     }
 
     func useRecentIcon(_ item: MenuBarIconRecentItem) {
+        clearError()
+
+        if let remoteSelection = remoteAssetSelection(for: item) {
+            guard remoteAssetStore.hasFrames(for: remoteSelection) else {
+                lastErrorMessage = "最近使用的在线图标文件已不存在。"
+                pruneMissingRecentItems()
+                return
+            }
+
+            storedState.remoteAssetSelection = remoteSelection
+            storedState.lightIconFileName = nil
+            storedState.darkIconFileName = nil
+            storeRemoteRecentItem(remoteSelection)
+            pruneUnusedRecentFiles()
+            resetAdjustmentsForAllAppearances()
+            invalidateSelectedIconCaches()
+            remoteAssetStore.pruneRemoteAssets(keeping: remoteSelection)
+            persist()
+            return
+        }
+
         let requiredFileNames = item.mediaKind == .animation ? item.frameFileNames : [item.fileName]
         guard requiredFileNames.allSatisfy({ fileManager.fileExists(atPath: recentsDirectory.appendingPathComponent($0).path) }) else {
             lastErrorMessage = "最近使用的图标文件已不存在。"
@@ -973,6 +814,7 @@ final class MenuBarIconSettings: ObservableObject {
         }
 
         setIconFileNameForAllAppearances(item.fileName)
+        clearRemoteAssetSelection()
         resetAdjustmentsForAllAppearances()
         invalidateSelectedIconCaches()
         persist()
@@ -981,9 +823,11 @@ final class MenuBarIconSettings: ObservableObject {
     func resetToDefault() {
         storedState.lightIconFileName = nil
         storedState.darkIconFileName = nil
+        storedState.remoteAssetSelection = nil
+        remoteAssetStore.pruneRemoteAssets(keeping: nil)
         storedState.lightAdjustment = .default
         storedState.darkAdjustment = .default
-        invalidateSelectedIconCaches()
+        invalidateAllIconCaches()
         persist()
     }
 
@@ -1002,19 +846,16 @@ final class MenuBarIconSettings: ObservableObject {
             return cachedImage
         }
 
-        let image = renderedImage(fileName: recentItem.fileName) ?? Self.defaultImage()
-        recentPreviewCache[cacheKey] = image
-        return image
-    }
-
-    func previewImage(for builtInAnimation: MenuBarIconBuiltInAnimation) -> NSImage {
-        guard
-            let sourceImage = builtInAnimation.loadFirstFrame(),
-            let image = MenuBarIconProcessing.renderedImage(from: sourceImage, adjustment: .default)
-        else {
-            return Self.defaultImage()
+        let image: NSImage
+        if let thumbnailFileName = recentItem.thumbnailFileName,
+           let thumbnail = renderedImage(fileName: thumbnailFileName) {
+            image = thumbnail
+        } else if let remoteSelection = remoteAssetSelection(for: recentItem) {
+            image = renderedImages(for: remoteSelection).first ?? Self.defaultImage()
+        } else {
+            image = renderedImage(fileName: recentItem.fileName) ?? Self.defaultImage()
         }
-
+        recentPreviewCache[cacheKey] = image
         return image
     }
 
@@ -1032,6 +873,10 @@ final class MenuBarIconSettings: ObservableObject {
         lastErrorMessage = nil
     }
 
+    func reportError(_ message: String) {
+        lastErrorMessage = message
+    }
+
     private func imagePayload(for resolvedAppearance: MenuBarIconAppearance) -> MenuBarIconImagePayload {
         if let cachedPayload = imagePayloadCache[resolvedAppearance] {
             return cachedPayload
@@ -1044,6 +889,26 @@ final class MenuBarIconSettings: ObservableObject {
 
     private func makeImagePayload(for resolvedAppearance: MenuBarIconAppearance) -> MenuBarIconImagePayload {
         guard let item = selectedRecentItem(for: resolvedAppearance) else {
+            if let selection = storedState.remoteAssetSelection,
+               remoteAssetStore.hasFrames(for: selection) {
+                let frames = renderedImages(for: selection)
+                if let image = frames.first {
+                    image.isTemplate = false
+                    for frame in frames {
+                        frame.isTemplate = false
+                    }
+
+                    return MenuBarIconImagePayload(
+                        image: image,
+                        isTemplate: false,
+                        animationFrames: frames,
+                        frameDuration: selection.frameDuration,
+                        speedMode: animationSpeedMode,
+                        manualSpeedMultiplier: manualAnimationSpeedMultiplier
+                    )
+                }
+            }
+
             let image = Self.defaultImage()
             image.isTemplate = true
             return MenuBarIconImagePayload(
@@ -1151,6 +1016,33 @@ final class MenuBarIconSettings: ObservableObject {
         return images
     }
 
+    private func renderedImages(for selection: MenuBarIconRemoteAssetSelection) -> [NSImage] {
+        let cacheKey = RemoteFramesCacheKey(
+            id: selection.id,
+            version: selection.version,
+            frameFileNames: selection.frameFileNames
+        )
+        if let cachedImages = remoteFramesCache[cacheKey] {
+            return cachedImages
+        }
+
+        let images = remoteAssetStore.frameURLs(for: selection).compactMap { url -> NSImage? in
+            guard let sourceImage = NSImage(contentsOf: url) else {
+                return nil
+            }
+
+            let image = MenuBarIconProcessing.renderedImage(
+                from: sourceImage,
+                adjustment: .default
+            ) ?? sourceImage
+            image.size = Self.iconPointSize
+            return image
+        }
+
+        remoteFramesCache[cacheKey] = images
+        return images
+    }
+
     private func renderedImage(fileName: String) -> NSImage? {
         let url = recentsDirectory.appendingPathComponent(fileName)
         guard let sourceImage = NSImage(contentsOf: url) else {
@@ -1186,14 +1078,77 @@ final class MenuBarIconSettings: ObservableObject {
         storedState.recentItems = Array(storedState.recentItems.prefix(Self.maxRecentItems))
     }
 
+    private func storeRemoteRecentItem(_ selection: MenuBarIconRemoteAssetSelection) {
+        let referenceFileName = MenuBarIconRemoteAssetReference.fileName(
+            assetID: selection.id,
+            version: selection.version
+        )
+        let thumbnailFileName = saveRemoteThumbnailIfNeeded(for: selection)
+        let recentItem = MenuBarIconRecentItem(
+            id: UUID(),
+            fileName: referenceFileName,
+            frameFileNames: selection.frameFileNames,
+            displayName: selection.displayName,
+            addedAt: Date(),
+            mediaKind: .animation,
+            frameDuration: selection.frameDuration,
+            thumbnailFileName: thumbnailFileName
+        )
+
+        storedState.recentItems.removeAll { item in
+            item.fileName == referenceFileName
+                || item.displayName == selection.displayName
+        }
+        storedState.recentItems.insert(recentItem, at: 0)
+        storedState.recentItems = Array(storedState.recentItems.prefix(Self.maxRecentItems))
+    }
+
+    private func remoteAssetSelection(for item: MenuBarIconRecentItem) -> MenuBarIconRemoteAssetSelection? {
+        guard let reference = MenuBarIconRemoteAssetReference.parse(item.fileName) else {
+            return nil
+        }
+
+        return MenuBarIconRemoteAssetSelection(
+            id: reference.assetID,
+            version: reference.version,
+            displayName: item.displayName,
+            frameFileNames: item.frameFileNames,
+            frameDuration: item.frameDuration
+        )
+    }
+
     private func setIconFileNameForAllAppearances(_ fileName: String?) {
         storedState.lightIconFileName = fileName
         storedState.darkIconFileName = fileName
     }
 
+    private func clearRemoteAssetSelection() {
+        storedState.remoteAssetSelection = nil
+        remoteAssetStore.pruneRemoteAssets(keeping: nil)
+    }
+
     private func resetAdjustmentsForAllAppearances() {
         storedState.lightAdjustment = .default
         storedState.darkAdjustment = .default
+    }
+
+    private func saveRemoteThumbnailIfNeeded(for selection: MenuBarIconRemoteAssetSelection) -> String? {
+        guard let thumbnail = renderedImages(for: selection).first,
+              let data = MenuBarIconProcessing.pngData(from: thumbnail)
+        else {
+            return nil
+        }
+
+        let fileName = "remote-thumbnail-\(UUID().uuidString).png"
+        let destinationURL = recentsDirectory.appendingPathComponent(fileName, isDirectory: false)
+
+        do {
+            try fileManager.createDirectory(at: recentsDirectory, withIntermediateDirectories: true)
+            try data.write(to: destinationURL, options: .atomic)
+            return fileName
+        } catch {
+            return nil
+        }
     }
 
     private func saveOriginalImage(_ image: NSImage, to destinationURL: URL) -> Bool {
@@ -1241,6 +1196,15 @@ final class MenuBarIconSettings: ObservableObject {
 
     private func pruneMissingRecentItems() {
         let items = storedState.recentItems.filter { item in
+            if let selection = remoteAssetSelection(for: item) {
+                if let thumbnailFileName = item.thumbnailFileName,
+                   fileManager.fileExists(atPath: recentsDirectory.appendingPathComponent(thumbnailFileName).path) {
+                    return true
+                }
+
+                return remoteAssetStore.hasFrames(for: selection)
+            }
+
             let requiredFileNames = item.mediaKind == .animation ? item.frameFileNames : [item.fileName]
             return requiredFileNames.allSatisfy { fileName in
                 fileManager.fileExists(atPath: recentsDirectory.appendingPathComponent(fileName).path)
@@ -1256,6 +1220,56 @@ final class MenuBarIconSettings: ObservableObject {
         persist()
     }
 
+    private func pruneUnusedRecentFiles() {
+        guard let fileURLs = try? fileManager.contentsOfDirectory(
+            at: recentsDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        let referencedFileNames = referencedRecentFileNames()
+        for fileURL in fileURLs where !referencedFileNames.contains(fileURL.lastPathComponent) {
+            try? fileManager.removeItem(at: fileURL)
+        }
+    }
+
+    private func referencedRecentFileNames() -> Set<String> {
+        var fileNames = Set<String>()
+
+        for item in storedState.recentItems {
+            if let thumbnailFileName = item.thumbnailFileName {
+                fileNames.insert(thumbnailFileName)
+            }
+
+            guard remoteAssetSelection(for: item) == nil else {
+                continue
+            }
+
+            if item.mediaKind == .animation {
+                fileNames.formUnion(item.frameFileNames)
+            } else {
+                fileNames.insert(item.fileName)
+            }
+        }
+
+        return fileNames
+    }
+
+    private func pruneMissingRemoteAssetSelection() {
+        guard let selection = storedState.remoteAssetSelection,
+              !remoteAssetStore.hasFrames(for: selection)
+        else {
+            return
+        }
+
+        storedState.remoteAssetSelection = nil
+        invalidateAllIconCaches()
+        remoteAssetStore.pruneRemoteAssets(keeping: nil)
+        persist()
+    }
+
     private func invalidateImagePayloadCache() {
         imagePayloadCache.removeAll()
     }
@@ -1268,6 +1282,7 @@ final class MenuBarIconSettings: ObservableObject {
     private func invalidateAllIconCaches() {
         invalidateSelectedIconCaches()
         renderedFramesCache.removeAll()
+        remoteFramesCache.removeAll()
         recentPreviewCache.removeAll()
     }
 }

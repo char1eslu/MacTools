@@ -6,16 +6,22 @@ final class AppWindowRouter: NSObject, NSWindowDelegate {
     private let pluginHost: PluginHost
     private let appUpdater: AppUpdater
     private let menuBarIconSettings: MenuBarIconSettings
+    private let menuBarIconGallery: MenuBarIconGalleryLibrary
+    private let launchAtLoginController: LaunchAtLoginController
     private var settingsWindow: NSWindow?
 
     init(
         pluginHost: PluginHost,
         appUpdater: AppUpdater,
-        menuBarIconSettings: MenuBarIconSettings
+        menuBarIconSettings: MenuBarIconSettings,
+        menuBarIconGallery: MenuBarIconGalleryLibrary,
+        launchAtLoginController: LaunchAtLoginController
     ) {
         self.pluginHost = pluginHost
         self.appUpdater = appUpdater
         self.menuBarIconSettings = menuBarIconSettings
+        self.menuBarIconGallery = menuBarIconGallery
+        self.launchAtLoginController = launchAtLoginController
         super.init()
     }
 
@@ -43,7 +49,9 @@ final class AppWindowRouter: NSObject, NSWindowDelegate {
             rootView: SettingsView(
                 pluginHost: pluginHost,
                 appUpdater: appUpdater,
-                menuBarIconSettings: menuBarIconSettings
+                menuBarIconSettings: menuBarIconSettings,
+                menuBarIconGallery: menuBarIconGallery,
+                launchAtLoginController: launchAtLoginController
             )
         )
         window.delegate = self

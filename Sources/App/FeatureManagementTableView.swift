@@ -9,6 +9,7 @@ struct FeatureManagementTableView: NSViewRepresentable {
     private static let dragType = NSPasteboard.PasteboardType("com.ggbond.mactools.feature-management-item")
 
     let items: [PluginFeatureManagementItem]
+    var isReorderEnabled: Bool = true
     let onVisibilityChange: (String, Bool) -> Void
     let onMove: (String, Int) -> Void
 
@@ -81,6 +82,10 @@ struct FeatureManagementTableView: NSViewRepresentable {
             return
         }
 
+        guard !coordinator.isDragging else {
+            return
+        }
+
         tableView.reloadData()
         tableView.noteNumberOfRowsChanged()
 
@@ -122,6 +127,7 @@ struct FeatureManagementTableView: NSViewRepresentable {
             let item = parent.items[row]
             view.configure(
                 item: item,
+                showsHandle: parent.isReorderEnabled,
                 onVisibilityChange: { [weak self] isVisible in
                     self?.parent.onVisibilityChange(item.id, isVisible)
                 }
@@ -130,10 +136,16 @@ struct FeatureManagementTableView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+            guard parent.isReorderEnabled else {
+                return nil
+            }
+
             let pasteboardItem = NSPasteboardItem()
             pasteboardItem.setString(parent.items[row].id, forType: FeatureManagementTableView.dragType)
             return pasteboardItem
         }
+
+        private(set) var isDragging = false
 
         func tableView(
             _ tableView: NSTableView,
@@ -141,8 +153,19 @@ struct FeatureManagementTableView: NSViewRepresentable {
             willBeginAt screenPoint: NSPoint,
             forRowIndexes rowIndexes: IndexSet
         ) {
+            isDragging = true
             session.animatesToStartingPositionsOnCancelOrFail = true
             session.draggingFormation = .none
+        }
+
+        func tableView(
+            _ tableView: NSTableView,
+            draggingSession session: NSDraggingSession,
+            endedAt screenPoint: NSPoint,
+            operation: NSDragOperation
+        ) {
+            isDragging = false
+            tableView.reloadData()
         }
 
         func tableView(_ tableView: NSTableView, updateDraggingItemsForDrag draggingInfo: NSDraggingInfo) {
@@ -179,6 +202,10 @@ struct FeatureManagementTableView: NSViewRepresentable {
             proposedRow row: Int,
             proposedDropOperation dropOperation: NSTableView.DropOperation
         ) -> NSDragOperation {
+            guard parent.isReorderEnabled else {
+                return []
+            }
+
             guard info.draggingPasteboard.availableType(from: [FeatureManagementTableView.dragType]) != nil else {
                 return []
             }
@@ -194,6 +221,10 @@ struct FeatureManagementTableView: NSViewRepresentable {
             row: Int,
             dropOperation: NSTableView.DropOperation
         ) -> Bool {
+            guard parent.isReorderEnabled else {
+                return false
+            }
+
             guard
                 let draggedID = info.draggingPasteboard.string(forType: FeatureManagementTableView.dragType)
             else {
@@ -293,9 +324,9 @@ private enum FeatureManagementDragPreview {
             .fill()
         }
 
-        drawVisibilitySwitch(
+        drawVisibilityCheckbox(
             isOn: item.isVisible,
-            in: NSRect(x: imageSize.width - 54, y: 22, width: 26, height: 16)
+            in: NSRect(x: imageSize.width - 50, y: 24, width: 14, height: 14)
         )
         drawSymbol(
             "line.3.horizontal",
@@ -345,25 +376,38 @@ private enum FeatureManagementDragPreview {
         tintedSymbol.draw(in: rect)
     }
 
-    private static func drawVisibilitySwitch(isOn: Bool, in rect: NSRect) {
-        let trackColor = isOn
-            ? NSColor.controlAccentColor.withAlphaComponent(0.85)
-            : NSColor.tertiaryLabelColor.withAlphaComponent(0.32)
-        trackColor.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+    private static func drawVisibilityCheckbox(isOn: Bool, in rect: NSRect) {
+        let path = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
 
-        let knobSize = rect.height - 4
-        let knobX = isOn ? rect.maxX - knobSize - 2 : rect.minX + 2
-        NSColor.white.withAlphaComponent(0.96).setFill()
-        NSBezierPath(
-            ovalIn: NSRect(
-                x: knobX,
-                y: rect.minY + 2,
-                width: knobSize,
-                height: knobSize
-            )
-        )
-        .fill()
+        if isOn {
+            NSColor.controlAccentColor.setFill()
+            path.fill()
+
+            let checkPath = NSBezierPath()
+            checkPath.lineWidth = 1.5
+            checkPath.lineCapStyle = .round
+            checkPath.lineJoinStyle = .round
+            checkPath.move(to: NSPoint(
+                x: rect.minX + rect.width * 0.2,
+                y: rect.midY
+            ))
+            checkPath.line(to: NSPoint(
+                x: rect.minX + rect.width * 0.42,
+                y: rect.minY + rect.height * 0.28
+            ))
+            checkPath.line(to: NSPoint(
+                x: rect.maxX - rect.width * 0.18,
+                y: rect.maxY - rect.height * 0.22
+            ))
+            NSColor.white.setStroke()
+            checkPath.stroke()
+        } else {
+            NSColor.windowBackgroundColor.setFill()
+            path.fill()
+            NSColor.separatorColor.withAlphaComponent(0.6).setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
     }
 }
 
@@ -392,6 +436,7 @@ private final class FeatureManagementTableCellView: NSTableCellView {
 
     func configure(
         item: PluginFeatureManagementItem,
+        showsHandle: Bool,
         onVisibilityChange: @escaping (Bool) -> Void
     ) {
         visibilityHandler = onVisibilityChange
@@ -406,6 +451,7 @@ private final class FeatureManagementTableCellView: NSTableCellView {
         iconBackgroundView.layer?.backgroundColor = NSColor(item.iconTint.opacity(0.14)).cgColor
         activeDotView.isHidden = !item.isActive
         visibilityButton.state = item.isVisible ? .on : .off
+        handleImageView.isHidden = !showsHandle
         toolTip = item.title
         visibilityButton.toolTip = item.title
     }

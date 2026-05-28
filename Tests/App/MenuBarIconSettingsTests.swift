@@ -246,66 +246,127 @@ final class MenuBarIconSettingsTests: XCTestCase {
         XCTAssertLessThanOrEqual(payload.animationFrames.count, MenuBarIconProcessing.maxAnimationFrames)
     }
 
-    func testBuiltInRunCatAnimationCanBeSelected() throws {
+    func testRemoteGalleryCatalogLoadsFromFileURL() async throws {
+        let galleryDirectory = rootDirectory.appendingPathComponent("Gallery", isDirectory: true)
+        let catalogURL = try makeRemoteGalleryCatalog(in: galleryDirectory, useArchive: false)
+        let provider = MenuBarIconGalleryProvider(
+            source: .localDevelopment(catalogURL)
+        )
+
+        let snapshot = try await provider.loadCatalog()
+
+        XCTAssertEqual(snapshot.catalog.assets.count, 1)
+        XCTAssertEqual(snapshot.catalog.assets.first?.id, "remote-runner")
+        XCTAssertTrue(snapshot.allowsFileResources)
+    }
+
+    func testRemoteGalleryAssetInstallsArchiveAndSettingsReadRemoteFrames() async throws {
+        let galleryDirectory = rootDirectory.appendingPathComponent("GalleryArchive", isDirectory: true)
+        let catalogURL = try makeRemoteGalleryCatalog(in: galleryDirectory, useArchive: true)
+        let provider = MenuBarIconGalleryProvider(
+            source: .localDevelopment(catalogURL)
+        )
+        let snapshot = try await provider.loadCatalog()
+        let asset = try XCTUnwrap(snapshot.catalog.assets.first)
+        let remoteStore = MenuBarIconRemoteAssetStore(
+            rootDirectory: rootDirectory.appendingPathComponent("RemoteAssets", isDirectory: true)
+        )
+        let selection = try await remoteStore.installAsset(
+            asset,
+            contentBaseURL: snapshot.contentBaseURL,
+            allowsFileResources: snapshot.allowsFileResources
+        )
         let settings = MenuBarIconSettings(
             userDefaults: userDefaults,
-            rootDirectory: rootDirectory
+            rootDirectory: rootDirectory,
+            remoteAssetStore: remoteStore
         )
-        let animation = try XCTUnwrap(settings.builtInAnimations.first { $0.id == "runcat" })
 
-        settings.useBuiltInAnimation(animation, for: .light)
+        settings.useRemoteAsset(selection)
         let payload = settings.imagePayload(for: NSAppearance(named: .aqua))
 
         XCTAssertNil(settings.lastErrorMessage)
         XCTAssertTrue(settings.hasCustomIcon)
-        XCTAssertEqual(settings.recentItems.first?.displayName, "RunCat")
-        XCTAssertEqual(payload.animationFrames.count, 5)
+        XCTAssertEqual(settings.selectedRemoteAsset?.id, "remote-runner")
+        XCTAssertEqual(payload.animationFrames.count, 3)
         XCTAssertTrue(payload.isAnimated)
+        XCTAssertEqual(settings.recentItems.count, 1)
+        XCTAssertEqual(settings.recentItems.first?.displayName, "远程跑动")
+        let recentItem = try XCTUnwrap(settings.recentItems.first)
+        XCTAssertNotNil(recentItem.thumbnailFileName)
+        XCTAssertEqual(settings.previewImage(for: recentItem).size, NSSize(width: 18, height: 18))
     }
 
-    func testBuiltInRunningLeftAnimationIsFirst() {
+    func testImportLocalIconClearsRemoteSelection() async throws {
+        let galleryDirectory = rootDirectory.appendingPathComponent("GallerySelection", isDirectory: true)
+        let catalogURL = try makeRemoteGalleryCatalog(in: galleryDirectory, useArchive: false)
+        let provider = MenuBarIconGalleryProvider(
+            source: .localDevelopment(catalogURL)
+        )
+        let snapshot = try await provider.loadCatalog()
+        let asset = try XCTUnwrap(snapshot.catalog.assets.first)
+        let remoteStore = MenuBarIconRemoteAssetStore(
+            rootDirectory: rootDirectory.appendingPathComponent("RemoteAssets", isDirectory: true)
+        )
+        let selection = try await remoteStore.installAsset(
+            asset,
+            contentBaseURL: snapshot.contentBaseURL,
+            allowsFileResources: snapshot.allowsFileResources
+        )
         let settings = MenuBarIconSettings(
             userDefaults: userDefaults,
-            rootDirectory: rootDirectory
+            rootDirectory: rootDirectory,
+            remoteAssetStore: remoteStore
         )
+        settings.useRemoteAsset(selection)
 
-        XCTAssertEqual(settings.builtInAnimations.first?.id, "running-left")
-        XCTAssertEqual(settings.builtInAnimations.first?.group, .featured)
+        let localIconURL = try makeImageFile(name: "local.png", color: .systemPurple)
+        settings.importIcon(from: localIconURL)
+
+        XCTAssertNil(settings.selectedRemoteAsset)
+        XCTAssertEqual(settings.recentItems.map(\.displayName), ["local", "远程跑动"])
     }
 
-    func testBuiltInRunningLeftAnimationCanBeSelected() throws {
+    func testRemoteRecentItemKeepsThumbnailAfterResetAndReloadsFrames() async throws {
+        let galleryDirectory = rootDirectory.appendingPathComponent("GalleryRestore", isDirectory: true)
+        let catalogURL = try makeRemoteGalleryCatalog(in: galleryDirectory, useArchive: false)
+        let provider = MenuBarIconGalleryProvider(
+            source: .localDevelopment(catalogURL)
+        )
+        let snapshot = try await provider.loadCatalog()
+        let asset = try XCTUnwrap(snapshot.catalog.assets.first)
+        let remoteStore = MenuBarIconRemoteAssetStore(
+            rootDirectory: rootDirectory.appendingPathComponent("RemoteAssets", isDirectory: true)
+        )
+        let selection = try await remoteStore.installAsset(
+            asset,
+            contentBaseURL: snapshot.contentBaseURL,
+            allowsFileResources: snapshot.allowsFileResources
+        )
         let settings = MenuBarIconSettings(
             userDefaults: userDefaults,
-            rootDirectory: rootDirectory
+            rootDirectory: rootDirectory,
+            remoteAssetStore: remoteStore
         )
-        let animation = try XCTUnwrap(settings.builtInAnimations.first { $0.id == "running-left" })
+        settings.useRemoteAsset(selection)
+        let item = try XCTUnwrap(settings.recentItems.first)
+        settings.resetToDefault()
+        let resetItem = try XCTUnwrap(settings.recentItems.first)
+        XCTAssertEqual(resetItem.displayName, "远程跑动")
+        XCTAssertEqual(settings.previewImage(for: resetItem).size, NSSize(width: 18, height: 18))
+        XCTAssertFalse(settings.isRemoteAssetCached(for: resetItem))
 
-        settings.useBuiltInAnimation(animation, for: .light)
-        let payload = settings.imagePayload(for: NSAppearance(named: .aqua))
-
-        XCTAssertNil(settings.lastErrorMessage)
-        XCTAssertTrue(settings.hasCustomIcon)
-        XCTAssertEqual(settings.recentItems.first?.displayName, "奔跑狗狗")
-        XCTAssertEqual(payload.animationFrames.count, 52)
-        XCTAssertEqual(payload.frameDuration, 1.0 / 24.0)
-        XCTAssertTrue(payload.isAnimated)
-    }
-
-    func testBuiltInRunCatAssetAnimationCanBeSelected() throws {
-        let settings = MenuBarIconSettings(
-            userDefaults: userDefaults,
-            rootDirectory: rootDirectory
+        let gallery = MenuBarIconGalleryLibrary(
+            provider: provider,
+            store: remoteStore,
+            rootDirectory: rootDirectory.appendingPathComponent("RemoteAssets", isDirectory: true)
         )
-        let animation = try XCTUnwrap(settings.builtInAnimations.first { $0.id == "runcat-flash-cat" })
+        let didSelect = await gallery.selectRecentItem(item, iconSettings: settings)
 
-        settings.useBuiltInAnimation(animation, for: .light)
-        let payload = settings.imagePayload(for: NSAppearance(named: .aqua))
-
-        XCTAssertNil(settings.lastErrorMessage)
-        XCTAssertTrue(settings.hasCustomIcon)
-        XCTAssertEqual(settings.recentItems.first?.displayName, "闪电猫")
-        XCTAssertEqual(payload.animationFrames.count, 5)
-        XCTAssertTrue(payload.isAnimated)
+        XCTAssertTrue(didSelect)
+        XCTAssertEqual(settings.selectedRemoteAsset?.id, "remote-runner")
+        XCTAssertTrue(settings.isRemoteAssetCached(for: try XCTUnwrap(settings.recentItems.first)))
+        XCTAssertTrue(settings.imagePayload(for: NSAppearance(named: .aqua)).isAnimated)
     }
 
     func testOversizedAnimationIsRejectedBeforeDecoding() async throws {
@@ -464,6 +525,72 @@ final class MenuBarIconSettingsTests: XCTestCase {
         wait(for: [finished], timeout: 5)
         XCTAssertEqual(writer.status, .completed)
         return url
+    }
+
+    private func makeRemoteGalleryCatalog(in directory: URL, useArchive: Bool) throws -> URL {
+        let assetDirectory = directory.appendingPathComponent("assets/remote-runner", isDirectory: true)
+        let framesDirectory = assetDirectory.appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: framesDirectory, withIntermediateDirectories: true)
+
+        for (index, color) in [NSColor.systemRed, .systemGreen, .systemBlue].enumerated() {
+            let sourceURL = try makeImageFile(name: "remote-frame-\(index).png", color: color)
+            let destinationURL = framesDirectory.appendingPathComponent(String(format: "frame-%03d.png", index))
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        }
+
+        try FileManager.default.copyItem(
+            at: framesDirectory.appendingPathComponent("frame-000.png"),
+            to: assetDirectory.appendingPathComponent("preview.png")
+        )
+
+        var asset: [String: Any] = [
+            "id": "remote-runner",
+            "title": "远程跑动",
+            "categoryID": "featured",
+            "version": "1",
+            "previewPath": "assets/remote-runner/preview.png",
+            "frameCount": 3,
+            "frameDuration": 0.1
+        ]
+
+        if useArchive {
+            let archiveURL = assetDirectory.appendingPathComponent("asset.zip")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            process.arguments = [
+                "-c",
+                "-k",
+                "--sequesterRsrc",
+                "--rsrc",
+                framesDirectory.path,
+                archiveURL.path
+            ]
+            try process.run()
+            process.waitUntilExit()
+            XCTAssertEqual(process.terminationStatus, 0)
+            asset["archivePath"] = "assets/remote-runner/asset.zip"
+            asset["archiveFramePathPattern"] = "frame-%03d.png"
+        } else {
+            asset["framePathPattern"] = "assets/remote-runner/frames/frame-%03d.png"
+        }
+
+        let catalog: [String: Any] = [
+            "schemaVersion": 1,
+            "generatedAt": "2026-05-20T00:00:00Z",
+            "baseURL": directory.appendingPathComponent("", isDirectory: true).absoluteString,
+            "categories": [
+                [
+                    "id": "featured",
+                    "title": "精选"
+                ]
+            ],
+            "assets": [asset]
+        ]
+
+        let catalogURL = directory.appendingPathComponent("catalog.dev.json")
+        let data = try JSONSerialization.data(withJSONObject: catalog, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: catalogURL)
+        return catalogURL
     }
 
     private func makePixelBuffer(color: NSColor) -> CVPixelBuffer? {

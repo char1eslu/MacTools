@@ -101,7 +101,7 @@ struct FixDropZoneView: View {
         switch viewModel.phase {
         case .waiting:
             VStack(spacing: 10) {
-                Image(systemName: "arrow.down.circle.dotted")
+                Image(systemName: "arrow.up.circle.dotted")
                     .font(.system(size: 34, weight: .light))
                     .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
                     .scaleEffect(isTargeted ? 1.15 : 1.0)
