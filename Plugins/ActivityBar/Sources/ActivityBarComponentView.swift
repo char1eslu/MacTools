@@ -195,6 +195,13 @@ struct ActivityBarComponentView: View {
             footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(ActivityBarComponentBackground(cornerRadius: ActivityBarComponentLayout.cardCornerRadius))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: ActivityBarComponentLayout.cardCornerRadius,
+                style: .continuous
+            )
+        )
         .animation(.easeInOut(duration: 0.2), value: statsExpanded)
         .animation(.easeInOut(duration: 0.2), value: chartRange)
         .animation(.easeInOut(duration: 0.2), value: trendMode)
@@ -1292,5 +1299,14 @@ struct ActivityBarComponentView: View {
         let tint: Color
         let systemImage: String
         let iconSize: CGFloat
+    }
+}
+
+private struct ActivityBarComponentBackground: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.primary.opacity(0.045))
     }
 }
