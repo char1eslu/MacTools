@@ -37,15 +37,18 @@ final class ActivityBarPlugin: MacToolsPlugin, PluginPrimaryPanel, PluginCompone
         menuActionBehavior: .keepPresented
     )
 
-    let descriptor = PluginComponentDescriptor(
-        span: PluginComponentSpan(
-            width: 4,
-            height: PluginComponentPanelLayoutMetrics.default.heightSpan(closestToOriginalSpanHeight: 10)
-        )!
-    )
+    var descriptor: PluginComponentDescriptor {
+        PluginComponentDescriptor(
+            span: PluginComponentSpan(
+                width: 4,
+                height: ActivityBarComponentLayout.spanHeight(statsExpanded: statsExpanded)
+            )!
+        )
+    }
 
     private let localization: PluginLocalization
     private let controller: ActivityBarController
+    private let defaults: UserDefaults
 
     var onStateChange: (() -> Void)? {
         didSet {
@@ -58,9 +61,11 @@ final class ActivityBarPlugin: MacToolsPlugin, PluginPrimaryPanel, PluginCompone
     init(
         context: PluginRuntimeContext,
         controller: ActivityBarController? = nil,
-        localization: PluginLocalization = PluginLocalization(bundle: .main)
+        localization: PluginLocalization = PluginLocalization(bundle: .main),
+        defaults: UserDefaults = .standard
     ) {
         self.localization = localization
+        self.defaults = defaults
         self.metadata = PluginMetadata(
             id: ActivityBarController.pluginID,
             title: localization.string("metadata.title", defaultValue: "活动统计"),
@@ -73,6 +78,14 @@ final class ActivityBarPlugin: MacToolsPlugin, PluginPrimaryPanel, PluginCompone
             )
         )
         self.controller = controller ?? ActivityBarController(context: context, localization: localization)
+    }
+
+    private var statsExpanded: Bool {
+        if defaults.object(forKey: ActivityBarComponentLayout.statsExpandedKey) == nil {
+            return true
+        }
+
+        return defaults.bool(forKey: ActivityBarComponentLayout.statsExpandedKey)
     }
 
     var primaryPanelState: PluginPanelState {

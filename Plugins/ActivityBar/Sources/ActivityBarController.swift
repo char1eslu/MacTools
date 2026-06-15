@@ -169,6 +169,10 @@ final class ActivityBarController: ObservableObject {
         notifyChange()
     }
 
+    func notifyComponentLayoutChanged() {
+        notifyChange()
+    }
+
     func setTrackingEnabled(_ enabled: Bool) {
         isTrackingEnabled = enabled
         storage.set(enabled, forKey: StorageKey.isTrackingEnabled)

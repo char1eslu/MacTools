@@ -4,13 +4,44 @@ import MacToolsPluginKit
 
 @MainActor
 final class ActivityBarPluginTests: XCTestCase {
+    private let suiteName = "ActivityBarPluginTests"
+
+    override func tearDown() {
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
     func testMetadataAndPanelsAreExposed() {
         let harness = makeHarness()
 
         XCTAssertEqual(harness.plugin.metadata.id, "activity-bar")
         XCTAssertEqual(harness.plugin.metadata.title, "活动统计")
         XCTAssertEqual(harness.plugin.primaryPanelDescriptor.controlStyle, .switch)
-        XCTAssertEqual(harness.plugin.descriptor.span, PluginComponentSpan(width: 4, height: 127)!)
+        XCTAssertEqual(
+            harness.plugin.descriptor.span,
+            PluginComponentSpan(
+                width: 4,
+                height: ActivityBarComponentLayout.spanHeight(statsExpanded: true)
+            )!
+        )
+    }
+
+    func testComponentDescriptorUsesCollapsedSpanWhenTrendsAreCollapsed() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: ActivityBarComponentLayout.statsExpandedKey)
+        let harness = makeHarness(defaults: defaults)
+
+        XCTAssertEqual(
+            harness.plugin.descriptor.span,
+            PluginComponentSpan(
+                width: 4,
+                height: ActivityBarComponentLayout.spanHeight(statsExpanded: false)
+            )!
+        )
+        XCTAssertLessThan(
+            harness.plugin.descriptor.span.height,
+            ActivityBarComponentLayout.spanHeight(statsExpanded: true)
+        )
     }
 
     func testSwitchStartsAndStopsRuntime() {
@@ -52,7 +83,7 @@ final class ActivityBarPluginTests: XCTestCase {
         XCTAssertEqual(harness.controller.todayInputStats.totalInputs, 0)
     }
 
-    private func makeHarness() -> Harness {
+    private func makeHarness(defaults: UserDefaults? = nil) -> Harness {
         let storage = ActivityBarMemoryStorage()
         let inputMonitor = ActivityBarFakeInputMonitor()
         let socketServer = ActivityBarFakeSocketServer()
@@ -67,7 +98,11 @@ final class ActivityBarPluginTests: XCTestCase {
             inputMonitor: inputMonitor,
             socketServer: socketServer
         )
-        let plugin = ActivityBarPlugin(context: context, controller: controller)
+        let plugin = ActivityBarPlugin(
+            context: context,
+            controller: controller,
+            defaults: defaults ?? makeDefaults()
+        )
 
         return Harness(
             plugin: plugin,
@@ -75,6 +110,12 @@ final class ActivityBarPluginTests: XCTestCase {
             inputMonitor: inputMonitor,
             socketServer: socketServer
         )
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 
     private struct Harness {

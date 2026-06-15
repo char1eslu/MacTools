@@ -3,18 +3,20 @@ import Charts
 import SwiftUI
 import MacToolsPluginKit
 
-private struct ActivityBarPanelShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        Path(
-            roundedRect: rect,
-            cornerRadius: ActivityBarComponentLayout.cardCornerRadius,
-            style: .continuous
+enum ActivityBarComponentLayout {
+    static let statsExpandedKey = "activity-bar.stats-expanded"
+    static let cardCornerRadius = PluginComponentPanelLayoutMetrics.cardCornerRadius
+    static let collapsedContentHeight: CGFloat = 520
+    static let expandedContentHeight: CGFloat = 780
+
+    static func spanHeight(
+        statsExpanded: Bool,
+        metrics: PluginComponentPanelLayoutMetrics = .default
+    ) -> Int {
+        metrics.heightSpan(
+            fittingContentHeight: statsExpanded ? expandedContentHeight : collapsedContentHeight
         )
     }
-}
-
-private enum ActivityBarComponentLayout {
-    static let cardCornerRadius = PluginComponentPanelLayoutMetrics.cardCornerRadius
 }
 
 private enum ActivityBarTrendMode: String, CaseIterable {
@@ -116,7 +118,7 @@ struct ActivityBarComponentView: View {
     @State private var expandedAppName: String?
     @State private var selectedDateOffset = 0
     @State private var trendMode: ActivityBarTrendMode = .input
-    @AppStorage("activity-bar.stats-expanded") private var statsExpanded = true
+    @AppStorage(ActivityBarComponentLayout.statsExpandedKey) private var statsExpanded = true
     @AppStorage("activity-bar.chart-range") private var chartRange = ActivityBarChartRange.sevenDays
 
     init(
@@ -193,12 +195,6 @@ struct ActivityBarComponentView: View {
             footerBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.regularMaterial, in: ActivityBarPanelShape())
-        .clipShape(ActivityBarPanelShape())
-        .overlay {
-            ActivityBarPanelShape()
-                .stroke(Color.black.opacity(0.5), lineWidth: 1)
-        }
         .animation(.easeInOut(duration: 0.2), value: statsExpanded)
         .animation(.easeInOut(duration: 0.2), value: chartRange)
         .animation(.easeInOut(duration: 0.2), value: trendMode)
@@ -616,6 +612,7 @@ struct ActivityBarComponentView: View {
         HStack {
             Button {
                 statsExpanded.toggle()
+                controller.notifyComponentLayoutChanged()
             } label: {
                 HStack(spacing: 6) {
                     Text(localization.string("component.trends.title", defaultValue: "Trends"))
