@@ -66,8 +66,10 @@ public enum PluginStatusTone {
 
 public enum PluginPermissionKind {
     case accessibility
+    case inputMonitoring
     case calendarFullAccess
     case automation
+    case screenRecording
 }
 
 public enum SettingsDestination: Hashable {
@@ -89,6 +91,181 @@ public enum PluginDeactivationReason: Equatable {
         switch self {
         case .disabled, .uninstalling, .hostShutdown: true
         case .updating: false
+        }
+    }
+}
+
+public enum MenuBarControlItemDefaults {
+    public static let visibleAutosaveName = "MacTools.ControlItem.Visible"
+    public static let hiddenAutosaveName = "MacTools.ControlItem.Hidden"
+    public static let alwaysHiddenAutosaveName = "MacTools.ControlItem.AlwaysHidden"
+    public static let visibleDefaultPreferredPosition: Double = 0
+    public static let hiddenDefaultPreferredPosition: Double = 1
+    public static let adjacentPreferredPositionOffset: Double = 0.5
+    private static let visiblePreferredPositionBackupKey = "MacTools.ControlItem.Visible.PreferredPositionBackup"
+
+    public static func prepareVisibleControlItem(userDefaults: UserDefaults = .standard) {
+        restoreVisibleControlItemPreferredPositionIfMissing(userDefaults: userDefaults)
+        prepareControlItemVisibility(autosaveName: visibleAutosaveName, userDefaults: userDefaults)
+    }
+
+    public static func resetVisibleControlItemPosition(userDefaults: UserDefaults = .standard) {
+        prepareControlItem(
+            autosaveName: visibleAutosaveName,
+            preferredPosition: preferredPositionForVisibleControlItemRightOfHiddenDivider(userDefaults: userDefaults),
+            alwaysResetPreferredPosition: true,
+            userDefaults: userDefaults
+        )
+    }
+
+    public static func visibleControlItemPreferredPosition(userDefaults: UserDefaults = .standard) -> Double? {
+        userDefaults.object(forKey: preferredPositionKey(visibleAutosaveName)) as? Double
+    }
+
+    public static func setVisibleControlItemPreferredPosition(
+        _ position: Double?,
+        userDefaults: UserDefaults = .standard
+    ) {
+        setPreferredPosition(position, autosaveName: visibleAutosaveName, userDefaults: userDefaults)
+    }
+
+    public static func snapshotVisibleControlItemPreferredPosition(userDefaults: UserDefaults = .standard) {
+        guard let preferredPosition = visibleControlItemPreferredPosition(userDefaults: userDefaults) else {
+            return
+        }
+
+        userDefaults.set(preferredPosition, forKey: visiblePreferredPositionBackupKey)
+    }
+
+    public static func restoreVisibleControlItemPreferredPositionIfMissing(
+        userDefaults: UserDefaults = .standard
+    ) {
+        guard
+            visibleControlItemPreferredPosition(userDefaults: userDefaults) == nil,
+            let preferredPosition = userDefaults.object(forKey: visiblePreferredPositionBackupKey) as? Double
+        else {
+            return
+        }
+
+        setVisibleControlItemPreferredPosition(preferredPosition, userDefaults: userDefaults)
+    }
+
+    public static func visibleControlItemNeedsRecovery(userDefaults: UserDefaults = .standard) -> Bool {
+        guard
+            let visiblePosition = visibleControlItemPreferredPosition(userDefaults: userDefaults),
+            let hiddenDividerPosition = hiddenDividerControlItemPreferredPosition(userDefaults: userDefaults)
+        else {
+            return false
+        }
+
+        return visiblePosition >= hiddenDividerPosition
+    }
+
+    public static func prepareHiddenDividerControlItem(
+        preferredPosition: Double = hiddenDefaultPreferredPosition,
+        userDefaults: UserDefaults = .standard
+    ) {
+        prepareControlItem(
+            autosaveName: hiddenAutosaveName,
+            preferredPosition: preferredPosition,
+            alwaysResetPreferredPosition: false,
+            userDefaults: userDefaults
+        )
+    }
+
+    public static func hiddenDividerControlItemPreferredPosition(userDefaults: UserDefaults = .standard) -> Double? {
+        userDefaults.object(forKey: preferredPositionKey(hiddenAutosaveName)) as? Double
+    }
+
+    public static func setHiddenDividerControlItemPreferredPosition(
+        _ position: Double?,
+        userDefaults: UserDefaults = .standard
+    ) {
+        setPreferredPosition(position, autosaveName: hiddenAutosaveName, userDefaults: userDefaults)
+    }
+
+    public static func prepareAlwaysHiddenDividerControlItem(userDefaults: UserDefaults = .standard) {
+        setPreferredPosition(nil, autosaveName: alwaysHiddenAutosaveName, userDefaults: userDefaults)
+        prepareControlItemVisibility(
+            autosaveName: alwaysHiddenAutosaveName,
+            userDefaults: userDefaults
+        )
+    }
+
+    public static func alwaysHiddenDividerControlItemPreferredPosition(userDefaults: UserDefaults = .standard) -> Double? {
+        userDefaults.object(forKey: preferredPositionKey(alwaysHiddenAutosaveName)) as? Double
+    }
+
+    public static func setAlwaysHiddenDividerControlItemPreferredPosition(
+        _ position: Double?,
+        userDefaults: UserDefaults = .standard
+    ) {
+        setPreferredPosition(position, autosaveName: alwaysHiddenAutosaveName, userDefaults: userDefaults)
+    }
+
+    public static func preferredPositionForVisibleControlItemRightOfHiddenDivider(
+        userDefaults: UserDefaults = .standard
+    ) -> Double {
+        let dividerPosition = hiddenDividerControlItemPreferredPosition(userDefaults: userDefaults)
+            ?? hiddenDefaultPreferredPosition
+        return dividerPosition - adjacentPreferredPositionOffset
+    }
+
+    public static func preferredPositionForHiddenDividerLeftOfVisibleControlItem(
+        userDefaults: UserDefaults = .standard
+    ) -> Double {
+        let visiblePosition = visibleControlItemPreferredPosition(userDefaults: userDefaults)
+            ?? visibleDefaultPreferredPosition
+        return visiblePosition + adjacentPreferredPositionOffset
+    }
+
+    private static func prepareControlItem(
+        autosaveName: String,
+        preferredPosition: Double,
+        alwaysResetPreferredPosition: Bool,
+        userDefaults: UserDefaults
+    ) {
+        let preferredPositionKey = key("Preferred Position", autosaveName: autosaveName)
+        if alwaysResetPreferredPosition || userDefaults.object(forKey: preferredPositionKey) == nil {
+            userDefaults.set(preferredPosition, forKey: preferredPositionKey)
+        }
+
+        prepareControlItemVisibility(autosaveName: autosaveName, userDefaults: userDefaults)
+    }
+
+    private static func prepareControlItemVisibility(
+        autosaveName: String,
+        userDefaults: UserDefaults
+    ) {
+        let visibleKey = key("Visible", autosaveName: autosaveName)
+        if userDefaults.object(forKey: visibleKey) == nil {
+            userDefaults.set(true, forKey: visibleKey)
+        }
+
+        let visibleControlCenterKey = key("VisibleCC", autosaveName: autosaveName)
+        if userDefaults.object(forKey: visibleControlCenterKey) == nil {
+            userDefaults.set(true, forKey: visibleControlCenterKey)
+        }
+    }
+
+    private static func key(_ rawValue: String, autosaveName: String) -> String {
+        "NSStatusItem \(rawValue) \(autosaveName)"
+    }
+
+    private static func preferredPositionKey(_ autosaveName: String) -> String {
+        key("Preferred Position", autosaveName: autosaveName)
+    }
+
+    private static func setPreferredPosition(
+        _ position: Double?,
+        autosaveName: String,
+        userDefaults: UserDefaults
+    ) {
+        let key = preferredPositionKey(autosaveName)
+        if let position {
+            userDefaults.set(position, forKey: key)
+        } else {
+            userDefaults.removeObject(forKey: key)
         }
     }
 }
@@ -163,6 +340,92 @@ public struct PluginComponentSpan: Equatable, Hashable, Sendable {
 
     public static func isValid(width: Int, height: Int) -> Bool {
         (1...maximumWidth).contains(width) && height >= 1
+    }
+}
+
+public struct PluginComponentPanelLayoutMetrics: Equatable, Sendable {
+    public static let cardCornerRadius: CGFloat = 12
+
+    public let columns: Int
+    public let cellWidth: CGFloat
+    public let cellHeight: CGFloat
+    public let horizontalSpacing: CGFloat
+    public let verticalSpacing: CGFloat
+    public let originalCellHeight: CGFloat
+
+    public init(
+        columns: Int,
+        cellWidth: CGFloat,
+        cellHeight: CGFloat,
+        horizontalSpacing: CGFloat,
+        verticalSpacing: CGFloat,
+        originalCellHeight: CGFloat
+    ) {
+        self.columns = columns
+        self.cellWidth = cellWidth
+        self.cellHeight = cellHeight
+        self.horizontalSpacing = horizontalSpacing
+        self.verticalSpacing = verticalSpacing
+        self.originalCellHeight = originalCellHeight
+    }
+
+    public static let `default`: PluginComponentPanelLayoutMetrics = {
+        let originalCellHeight: CGFloat = 94
+        let verticalSpacing: CGFloat = 8
+        return PluginComponentPanelLayoutMetrics(
+            columns: PluginComponentSpan.maximumWidth,
+            cellWidth: 70,
+            cellHeight: 8,
+            horizontalSpacing: 8,
+            verticalSpacing: verticalSpacing,
+            originalCellHeight: originalCellHeight
+        )
+    }()
+
+    public var gridWidth: CGFloat {
+        CGFloat(columns) * cellWidth + CGFloat(max(columns - 1, 0)) * horizontalSpacing
+    }
+
+    public func itemWidth(forSpanWidth width: Int) -> CGFloat {
+        CGFloat(width) * cellWidth + CGFloat(max(width - 1, 0)) * horizontalSpacing
+    }
+
+    public func itemHeight(forSpanHeight height: Int) -> CGFloat {
+        CGFloat(height) * cellHeight
+    }
+
+    public func offsetX(forColumn column: Int) -> CGFloat {
+        CGFloat(column) * (cellWidth + horizontalSpacing)
+    }
+
+    public func offsetY(forRow row: Int) -> CGFloat {
+        CGFloat(row) * cellHeight
+    }
+
+    public func heightSpan(fittingContentHeight contentHeight: CGFloat) -> Int {
+        guard contentHeight > 0 else {
+            return 1
+        }
+
+        guard cellHeight > 0 else {
+            return 1
+        }
+
+        return max(1, Int(ceil(contentHeight / cellHeight)))
+    }
+
+    public func heightSpan(closestToOriginalSpanHeight originalSpanHeight: Int) -> Int {
+        guard originalSpanHeight > 0 else {
+            return 1
+        }
+
+        let targetHeight = CGFloat(originalSpanHeight) * originalCellHeight
+            + CGFloat(max(originalSpanHeight - 1, 0)) * verticalSpacing
+        guard cellHeight > 0 else {
+            return 1
+        }
+
+        return max(1, Int((targetHeight / cellHeight).rounded()))
     }
 }
 
@@ -570,6 +833,7 @@ public struct PluginFeatureManagementItem: Identifiable {
     public let isActive: Bool
     public let presentation: PluginFeaturePresentation
     public let category: String?
+    public let releaseChannel: String?
 
     public init(
         id: String,
@@ -580,7 +844,8 @@ public struct PluginFeatureManagementItem: Identifiable {
         isVisible: Bool,
         isActive: Bool,
         presentation: PluginFeaturePresentation,
-        category: String? = nil
+        category: String? = nil,
+        releaseChannel: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -591,6 +856,7 @@ public struct PluginFeatureManagementItem: Identifiable {
         self.isActive = isActive
         self.presentation = presentation
         self.category = category
+        self.releaseChannel = releaseChannel
     }
 }
 

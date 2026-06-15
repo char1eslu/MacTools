@@ -1,0 +1,101 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import SiteNav from "@/components/SiteNav.astro";
+import SiteFooter from "@/components/SiteFooter.astro";
+import { categoryLabel, formatSize, loadPluginCatalog, localizedPluginText } from "@/lib/plugins";
+
+const catalog = await loadPluginCatalog();
+const plugins = [...catalog.plugins].sort((a, b) => {
+  const categoryCompare = categoryLabel(a.category).zh.localeCompare(categoryLabel(b.category).zh, "zh-CN");
+  if (categoryCompare !== 0) return categoryCompare;
+  return localizedPluginText(a).zh.displayName.localeCompare(localizedPluginText(b).zh.displayName, "zh-CN");
+});
+
+const categories = new Map<string, number>();
+for (const plugin of plugins) {
+  const key = plugin.category ?? "other";
+  categories.set(key, (categories.get(key) ?? 0) + 1);
+}
+
+const categoryFilters = [...categories.entries()].map(([key, count]) => ({
+  key,
+  count,
+  label: categoryLabel(key === "other" ? null : key),
+}));
+---
+
+<BaseLayout
+  title="MacTools 插件 | Plugin Catalog"
+  description="浏览 MacTools 在线插件 catalog，查看插件分类、版本、能力和下载包。"
+  page="plugins"
+>
+  <SiteNav active="plugins" />
+  <main>
+    <section class="page-hero plugins-hero">
+      <p class="eyebrow">
+        <span data-i18n-zh>在线插件目录</span>
+        <span data-i18n-en>Online plugin catalog</span>
+      </p>
+      <h1>
+        <span data-i18n-zh>{plugins.length} 个插件，按功能清晰归位。</span>
+        <span data-i18n-en>{plugins.length} plugins, organized by purpose.</span>
+      </h1>
+    </section>
+
+    <section class="plugin-directory" aria-label="插件列表">
+      <div class="category-rail" aria-label="插件分类">
+        <button type="button" data-plugin-filter="all" aria-pressed="true">
+          <span data-i18n-zh>全部</span>
+          <span data-i18n-en>All</span>
+          <strong>{plugins.length}</strong>
+        </button>
+        {categoryFilters.map((filter) => (
+          <button type="button" data-plugin-filter={filter.key} aria-pressed="false">
+            <span data-i18n-zh>{filter.label.zh}</span>
+            <span data-i18n-en>{filter.label.en}</span>
+            <strong>{filter.count}</strong>
+          </button>
+        ))}
+      </div>
+
+      <div class="plugin-grid">
+        {plugins.map((plugin) => {
+          const category = categoryLabel(plugin.category);
+          const text = localizedPluginText(plugin);
+          const size = formatSize(plugin.package?.size);
+          const filterCategory = plugin.category ?? "other";
+          return (
+            <article class="plugin-card" data-plugin-category={filterCategory}>
+              <div>
+                <p class="plugin-category">
+                  <span data-i18n-zh>{category.zh}</span>
+                  <span data-i18n-en>{category.en}</span>
+                </p>
+                <h2>
+                  <span data-i18n-zh>{text.zh.displayName}</span>
+                  <span data-i18n-en>{text.en.displayName}</span>
+                </h2>
+                <p>
+                  <span data-i18n-zh>{text.zh.summary}</span>
+                  <span data-i18n-en>{text.en.summary}</span>
+                </p>
+              </div>
+              <div class="plugin-meta">
+                <span>v{plugin.version}</span>
+                {plugin.releaseChannel ? <span>{plugin.releaseChannel}</span> : null}
+                {size ? <span>{size}</span> : null}
+              </div>
+              <div class="plugin-capabilities" aria-label="插件能力">
+                {plugin.capabilities.primaryPanel ? <span>Panel</span> : null}
+                {plugin.capabilities.componentPanel ? <span>Widget</span> : null}
+                {plugin.capabilities.configuration ? <span>Settings</span> : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  </main>
+  <SiteFooter />
+  <script src="../scripts/site-controls.ts"></script>
+</BaseLayout>

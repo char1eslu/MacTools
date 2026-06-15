@@ -7,18 +7,22 @@ enum MenuBarStatusItemInvocation: Equatable {
     case featurePanel
     case componentPanel
 
-    static func invocation(for event: NSEvent?) -> MenuBarStatusItemInvocation {
-        guard let event else {
-            return .componentPanel
-        }
+    static func invocation(
+        for event: NSEvent?,
+        swapped: Bool = false
+    ) -> MenuBarStatusItemInvocation {
+        // A secondary click is a right-click or a Control-click; everything else
+        // (including a nil event for programmatic fallback) is a primary click.
+        let isSecondary: Bool = {
+            guard let event else { return false }
+            return event.type == .rightMouseDown
+                || event.type == .rightMouseUp
+                || event.modifierFlags.contains(.control)
+        }()
 
-        if event.type == .rightMouseDown
-            || event.type == .rightMouseUp
-            || event.modifierFlags.contains(.control) {
-            return .featurePanel
-        }
-
-        return .componentPanel
+        let primary: MenuBarStatusItemInvocation = swapped ? .featurePanel : .componentPanel
+        let secondary: MenuBarStatusItemInvocation = swapped ? .componentPanel : .featurePanel
+        return isSecondary ? secondary : primary
     }
 }
 
@@ -27,13 +31,15 @@ final class MenuBarStatusItemController: NSObject {
     private let pluginHost: PluginHost
     private let windowRouter: AppWindowRouter
     private let iconSettings: MenuBarIconSettings
-    private let statusItem: NSStatusItem
+    private var statusItem: NSStatusItem
     private var panelPresenter: MenuBarPanelPresenter!
     private var cancellables: Set<AnyCancellable> = []
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var appActivationObserver: NSObjectProtocol?
     private var appearanceObserver: NSObjectProtocol?
+    private var appTerminationObserver: NSObjectProtocol?
+    private var statusItemWindowMoveObserver: NSObjectProtocol?
     private var animationTimer: DispatchSourceTimer?
     private var animationLoadSampleTimer: Timer?
     private let animationLoadMonitor = MenuBarIconAnimationLoadMonitor()
@@ -52,7 +58,9 @@ final class MenuBarStatusItemController: NSObject {
         self.pluginHost = pluginHost
         self.windowRouter = windowRouter
         self.iconSettings = iconSettings
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        MenuBarControlItemDefaults.prepareVisibleControlItem()
+        self.statusItem = NSStatusBar.system.statusItem(withLength: 0)
+        self.statusItem.autosaveName = MenuBarControlItemDefaults.visibleAutosaveName
         super.init()
         panelPresenter = MenuBarPanelPresenter(
             pluginHost: pluginHost,
@@ -72,10 +80,14 @@ final class MenuBarStatusItemController: NSObject {
                 self?.removeDismissMonitorsIfNeeded()
             }
         )
+        observeStatusItemPositionPersistence()
         configureStatusItem()
         observePluginHost()
         observeIconSettings()
         updateStatusIcon()
+        pluginHost.resetStatusItemPosition = { [weak self] in
+            self?.resetStatusItemPosition()
+        }
         pluginHost.statusItemButtonFrameProvider = { [weak self] in
             self?.statusItemButtonScreenRect()
         }
@@ -93,6 +105,12 @@ final class MenuBarStatusItemController: NSObject {
             animationLoadSampleTimer?.invalidate()
             if let appearanceObserver {
                 DistributedNotificationCenter.default().removeObserver(appearanceObserver)
+            }
+            if let appTerminationObserver {
+                NotificationCenter.default.removeObserver(appTerminationObserver)
+            }
+            if let statusItemWindowMoveObserver {
+                NotificationCenter.default.removeObserver(statusItemWindowMoveObserver)
             }
         }
     }
@@ -152,9 +170,63 @@ final class MenuBarStatusItemController: NSObject {
         let payload = iconSettings.imagePayload(for: statusItem.button?.effectiveAppearance)
         payload.image.isTemplate = payload.isTemplate
 
+        statusItem.length = NSStatusItem.variableLength
         statusItem.button?.image = payload.image
         statusItem.button?.imagePosition = .imageOnly
         configureAnimationIfNeeded(payload)
+    }
+
+    private func observeStatusItemPositionPersistence() {
+        appTerminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MenuBarControlItemDefaults.snapshotVisibleControlItemPreferredPosition()
+        }
+
+        statusItemWindowMoveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let movedWindowIdentifier = (notification.object as? NSWindow).map { ObjectIdentifier($0) }
+            MainActor.assumeIsolated {
+                self?.snapshotVisibleControlItemPreferredPositionIfNeeded(
+                    forMovedWindowIdentifier: movedWindowIdentifier
+                )
+            }
+        }
+    }
+
+    private func snapshotVisibleControlItemPreferredPositionIfNeeded(
+        forMovedWindowIdentifier movedWindowIdentifier: ObjectIdentifier?
+    ) {
+        guard
+            let movedWindowIdentifier,
+            let statusItemWindow = statusItem.button?.window,
+            movedWindowIdentifier == ObjectIdentifier(statusItemWindow)
+        else {
+            return
+        }
+
+        MenuBarControlItemDefaults.snapshotVisibleControlItemPreferredPosition()
+    }
+
+    private func resetStatusItemPosition() {
+        dismissPanels()
+
+        let oldItem = statusItem
+        NSStatusBar.system.removeStatusItem(oldItem)
+        MenuBarControlItemDefaults.resetVisibleControlItemPosition()
+        MenuBarControlItemDefaults.snapshotVisibleControlItemPreferredPosition()
+
+        let newItem = NSStatusBar.system.statusItem(withLength: 0)
+        newItem.autosaveName = MenuBarControlItemDefaults.visibleAutosaveName
+        statusItem = newItem
+
+        configureStatusItem()
+        updateStatusIcon()
     }
 
     private func configureAnimationIfNeeded(_ payload: MenuBarIconImagePayload) {
@@ -248,7 +320,10 @@ final class MenuBarStatusItemController: NSObject {
 
     @objc
     private func handleStatusItemAction(_ sender: NSStatusBarButton) {
-        switch MenuBarStatusItemInvocation.invocation(for: NSApp.currentEvent) {
+        // Read the preference live on each click so a settings change takes
+        // effect immediately without re-observing.
+        let swapped = MenuBarClickBehaviorPreference.current().isSwapped
+        switch MenuBarStatusItemInvocation.invocation(for: NSApp.currentEvent, swapped: swapped) {
         case .featurePanel:
             toggleFeaturePanel(relativeTo: sender)
         case .componentPanel:

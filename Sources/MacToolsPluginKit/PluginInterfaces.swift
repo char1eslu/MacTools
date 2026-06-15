@@ -30,6 +30,16 @@ public protocol PluginPrimaryPanel: AnyObject {
     func handleAction(_ action: PluginPanelAction)
 }
 
+public enum PluginShortcutEventPhase: Sendable {
+    case pressed
+    case released
+}
+
+@MainActor
+public protocol PluginShortcutEventHandling: AnyObject {
+    func handleShortcutEvent(id: String, phase: PluginShortcutEventPhase)
+}
+
 public extension MacToolsPlugin {
     var primaryPanel: (any PluginPrimaryPanel)? {
         nil
@@ -115,4 +125,19 @@ public protocol DisplayTopologyRefreshing {
 public protocol DropZoneAnchorProviding: AnyObject {
     /// 宿主注入：返回状态栏图标按钮在屏幕坐标系中的 frame。
     var anchorRectProvider: (() -> NSRect?)? { get set }
+}
+
+/// 可选协议——需要保护宿主菜单栏状态项位置的插件才声明遵从。
+@MainActor
+public protocol MenuBarHostStatusItemRecovering: AnyObject {
+    var hostStatusItemFrameProvider: (() -> NSRect?)? { get set }
+    var resetHostStatusItemPosition: (() -> Void)? { get set }
+}
+
+/// 可选协议——需要从自定义 UI（如独立浮窗）主动打开本插件设置页的插件才声明遵从。
+/// 不修改 `MacToolsPlugin` witness table，对已安装旧插件无影响。
+@MainActor
+public protocol PluginConfigurationPresenting: AnyObject {
+    /// 宿主注入：请求展示当前插件的设置页。
+    var requestConfigurationPresentation: (() -> Void)? { get set }
 }
