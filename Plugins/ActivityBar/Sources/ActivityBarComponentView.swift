@@ -194,11 +194,11 @@ struct ActivityBarComponentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.regularMaterial, in: ActivityBarPanelShape())
+        .clipShape(ActivityBarPanelShape())
         .overlay {
             ActivityBarPanelShape()
                 .stroke(Color.black.opacity(0.5), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
         .animation(.easeInOut(duration: 0.2), value: statsExpanded)
         .animation(.easeInOut(duration: 0.2), value: chartRange)
         .animation(.easeInOut(duration: 0.2), value: trendMode)
@@ -211,7 +211,7 @@ struct ActivityBarComponentView: View {
 
     private var headerBar: some View {
         HStack {
-                Text(localization.string("component.title", defaultValue: "Activity Bar"))
+            Text(localization.string("component.title", defaultValue: "Activity Bar"))
                 .font(.title3.bold())
                 .lineLimit(1)
 
